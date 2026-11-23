@@ -362,8 +362,9 @@ fn addUiLib(ctx: Ctx, engine: *std.Build.Step.Compile, raven_build: *std.Build.S
         }),
     });
     mod.linkLibrary(keymap_lib);
-    mod.addLibraryPath(.{ .cwd_relative = ravenBuildDir(ctx) });
-    mod.linkSystemLibrary("raven", .{});
+    // libraven.a is linked by file, not through a library search path: a search path
+    // would be recorded as a relative RUNPATH entry in the shared library.
+    mod.addObjectFile(.{ .cwd_relative = b.fmt("{s}/libraven.a", .{ravenBuildDir(ctx)}) });
     linkRavenPlatform(ctx, mod);
     linkShared(mod, engine);
     mod.addRPathSpecial(originPath(ctx, ""));
