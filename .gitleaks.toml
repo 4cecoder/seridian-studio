@@ -1,0 +1,12 @@
+# Keyboard key-name tables (`.key = raven.R_KEY_F9`) look like `key = value` to
+# the generic-api-key rule. Only that rule, only these two files.
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Key-name tables in the Raven Zig port"
+targetRules = ["generic-api-key"]
+paths = [
+  '''vendor/raven/zig/src/widgets/menu\.zig''',
+  '''vendor/raven/zig/src/platform/x11/x11_platform\.zig''',
+]
