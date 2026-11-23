@@ -1,0 +1,4 @@
+<script>
+class P {}
+</script>
+<VBox><Label Name="a_b"/><Label Name="__x"/></VBox>

@@ -1,0 +1,42 @@
+# Zig build artifacts
+zig-out/
+zig-cache/
+.zig-cache/
+vendor/raven/_build/
+
+# Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Build files
+*.o
+*.a
+*.so
+*.dylib
+
+# Config and data
+*.db
+*.log
+
+# Temporary files
+tmp/
+temp/
+
+# Local build outputs and scratch binaries in the repo root
+/main
+/test_*
+!/test_playback.zig
+*.backup
+
+# Agent tooling state
+.auto-claude/
+.worktrees/
+reference/samples/
+vendor/raven/_build_headless/
+
+# macOS AppleDouble metadata
+._*

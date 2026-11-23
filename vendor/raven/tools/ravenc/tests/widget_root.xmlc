@@ -1,0 +1,4 @@
+<script>
+#include <x.h>
+</script>
+<Border Padding="4"><Label Name="a">x</Label></Border>

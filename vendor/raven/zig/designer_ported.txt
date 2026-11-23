@@ -1,0 +1,13 @@
+# C files of tools/designer replaced by their Zig translation in zig/src/designer (see tools/CMakeLists.txt).
+# One per line; blank lines and # comments are ignored. Add a file only when check.sh --tools passes with it.
+tools/designer/xmlc.c
+tools/designer/accessibility.c
+tools/designer/island.c
+tools/designer/drawer.c
+tools/designer/strings.c
+tools/designer/project.c
+tools/designer/editors.c
+tools/designer/build.c
+tools/designer/welcome.c
+tools/designer/os.c
+tools/designer/main.c

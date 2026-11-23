@@ -1,0 +1,99 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Pinned Zig master build; bump together with build.zig.zon minimum_zig_version.
+  ZIG_VERSION: 0.18.0-dev.738+ae9a8acc7
+
+jobs:
+  linux:
+    name: Linux (build, test, launch)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends \
+            cmake ninja-build libx11-dev libvulkan1 mesa-vulkan-drivers \
+            libpulse-dev libpipewire-0.3-dev libasound2-dev xvfb
+
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: ${{ env.ZIG_VERSION }}
+
+      - name: Check formatting
+        run: zig build fmt
+
+      - name: Build (Debug)
+        run: zig build --summary all
+
+      - name: Unit tests
+        run: zig build test --summary all
+
+      - name: Vocal QA (ReleaseFast, enforces the realtime CPU budget)
+        run: zig build test-vocal -Doptimize=ReleaseFast --summary all
+
+      - name: Build (ReleaseSafe)
+        run: zig build -Doptimize=ReleaseSafe
+
+      - name: Binaries resolve their libraries through $ORIGIN only
+        run: |
+          set -euo pipefail
+          for f in zig-out/bin/seridian-studio zig-out/lib/libdaw-engine.so.0.1.0 zig-out/lib/libdaw-ui.so.0.1.0; do
+            rp="$(readelf -d "$f" | sed -n 's/.*(RUNPATH).*\[\(.*\)\]/\1/p')"
+            echo "$f: $rp"
+            IFS=: read -ra entries <<< "$rp"
+            for e in "${entries[@]}"; do
+              # shellcheck disable=SC2016 # literal $ORIGIN
+              [[ "$e" == '$ORIGIN'* ]] || { echo "::error file=$f::non-\$ORIGIN RUNPATH entry: $e"; exit 1; }
+            done
+          done
+          if ldd zig-out/bin/seridian-studio | grep 'not found'; then exit 1; fi
+
+      - name: Launch smoke test (headless, no audio server)
+        run: |
+          set -uo pipefail
+          # The app runs until closed: reaching the timeout (124) means it
+          # started the engine, opened its Raven window (lavapipe Vulkan under
+          # Xvfb) and entered the main loop without crashing.
+          status=0
+          xvfb-run -a timeout 15 zig-out/bin/seridian-studio > daw.log 2>&1 || status=$?
+          cat daw.log
+          if [[ $status -ne 124 ]]; then
+            echo "::error::seridian-studio exited early with status $status"
+            exit 1
+          fi
+          grep -q "Audio engine initialized" daw.log
+
+  macos:
+    name: macOS (build, test)
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install dependencies
+        run: brew install cmake ninja
+
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: ${{ env.ZIG_VERSION }}
+
+      - name: Build
+        run: zig build --summary all
+
+      - name: Unit tests
+        run: zig build test --summary all

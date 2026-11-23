@@ -1,0 +1,6 @@
+<!-- c -->
+<script>
+  package demo
+func f(s raven.ID, a string) {}
+</script>
+<Window><Button OnClicked="{f}"/></Window>

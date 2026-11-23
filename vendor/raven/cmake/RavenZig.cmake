@@ -1,0 +1,184 @@
+# Raven: strangler-style translation of the C sources to Zig (see zig/PORTING.md).
+#
+# zig/ported.txt lists, one per line, the C / Objective-C sources (paths relative to the
+# Raven directory, e.g. src/core/utf8.c) that are replaced by their Zig translation
+# (zig/src/core/utf8.zig; web/src/web_json.c -> zig/src/web/web_json.zig). For a configuration:
+#   - those sources are removed from the library,
+#   - zig/src/root.zig (generated) imports their translations,
+#   - one object file, raven_zig.o, is compiled from it and added to the library,
+#     so libraven.a (or the shared library) exports exactly the same symbols as before.
+# An empty ported.txt gives the plain C library. Entries that are not part of the
+# configuration (e.g. src/platform/x11/x11_platform.c on macOS) are ignored.
+#
+# Cache variables:
+#   RAVEN_ZIG                 ON/OFF   use the translations (default ON; OFF = pure C build)
+#   RAVEN_ZIG_PORTED_FILE     the list (default zig/ported.txt)
+#   RAVEN_ZIG_ROOT_NAME       file name of the generated root in zig/src (default root.zig)
+#   RAVEN_ZIG_OPTIMIZE        Debug, ReleaseSafe (default), ReleaseFast or ReleaseSmall
+#   RAVEN_ZIG_TARGET          zig -target triple when cross compiling (default: the host)
+#   RAVEN_ZIG_EXECUTABLE      the zig compiler (default: zig from PATH)
+
+option(RAVEN_ZIG "Replace the C sources listed in zig/ported.txt by their Zig translation" ON)
+set(RAVEN_ZIG_PORTED_FILE "${CMAKE_CURRENT_SOURCE_DIR}/zig/ported.txt" CACHE FILEPATH "List of the C sources replaced by Zig")
+set(RAVEN_ZIG_ROOT_NAME "root.zig" CACHE STRING "Name of the generated Zig root file in zig/src")
+set(RAVEN_ZIG_OPTIMIZE "ReleaseSafe" CACHE STRING "Zig optimize mode: Debug, ReleaseSafe, ReleaseFast or ReleaseSmall")
+set(RAVEN_ZIG_TARGET "" CACHE STRING "zig -target for the translated sources (empty: the host)")
+set(RAVEN_ZIG_EXECUTABLE "" CACHE FILEPATH "The zig compiler (empty: look for zig in PATH)")
+
+set(RAVEN_ZIG_DIR "${CMAKE_CURRENT_SOURCE_DIR}/zig")
+set(RAVEN_ZIG_OBJECT "")
+set(RAVEN_ZIG_PORTED "")
+
+# raven_zig_prepare(<list variable>...)
+# Call it after the source lists are complete and before they are given to the library:
+# the ported sources are removed from the lists, and RAVEN_ZIG_OBJECT / RAVEN_ZIG_PORTED are set.
+macro(raven_zig_prepare)
+	set(RAVEN_ZIG_PORTED "")
+	set(RAVEN_ZIG_OBJECT "")
+	if(RAVEN_ZIG AND EXISTS "${RAVEN_ZIG_PORTED_FILE}")
+		# editing the list reconfigures
+		set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${RAVEN_ZIG_PORTED_FILE}")
+		file(STRINGS "${RAVEN_ZIG_PORTED_FILE}" _raven_zig_lines)
+		set(_raven_zig_imports "")
+		foreach(_raven_zig_line IN LISTS _raven_zig_lines)
+			string(REGEX REPLACE "#.*$" "" _raven_zig_line "${_raven_zig_line}")
+			string(STRIP "${_raven_zig_line}" _raven_zig_line)
+			if(NOT _raven_zig_line STREQUAL "")
+				if(NOT _raven_zig_line MATCHES "^(src|web/src)/.*\\.(c|m)$")
+					message(FATAL_ERROR "Raven Zig: '${_raven_zig_line}' in ${RAVEN_ZIG_PORTED_FILE} is not a C / Objective-C source under src/ or web/src/")
+				endif()
+				# src/<m>/<f>.c -> zig/src/<m>/<f>.zig;  web/src/<f>.c -> zig/src/web/<f>.zig
+				if(_raven_zig_line MATCHES "^web/src/")
+					string(REGEX REPLACE "^web/src/(.*)\\.(c|m)$" "web/\\1.zig" _raven_zig_unit "${_raven_zig_line}")
+				else()
+					string(REGEX REPLACE "^src/(.*)\\.(c|m)$" "\\1.zig" _raven_zig_unit "${_raven_zig_line}")
+				endif()
+				if(NOT EXISTS "${RAVEN_ZIG_DIR}/src/${_raven_zig_unit}")
+					message(FATAL_ERROR "Raven Zig: '${_raven_zig_line}' is listed as ported but zig/src/${_raven_zig_unit} does not exist")
+				endif()
+				set(_raven_zig_found FALSE)
+				foreach(_raven_zig_var ${ARGN})
+					list(FIND ${_raven_zig_var} "${_raven_zig_line}" _raven_zig_index)
+					if(NOT _raven_zig_index EQUAL -1)
+						list(REMOVE_AT ${_raven_zig_var} ${_raven_zig_index})
+						set(_raven_zig_found TRUE)
+					endif()
+				endforeach()
+				if(_raven_zig_found)
+					list(APPEND RAVEN_ZIG_PORTED "${_raven_zig_line}")
+					string(APPEND _raven_zig_imports "    _ = @import(\"${_raven_zig_unit}\");\n")
+				else()
+					message(STATUS "Raven Zig: ${_raven_zig_line} is not part of this configuration (ignored)")
+				endif()
+			endif()
+		endforeach()
+	endif()
+
+	if(RAVEN_ZIG_PORTED)
+		if(RAVEN_ZIG_EXECUTABLE)
+			set(_raven_zig_exe "${RAVEN_ZIG_EXECUTABLE}")
+		else()
+			find_program(_raven_zig_exe zig)
+		endif()
+		if(NOT _raven_zig_exe)
+			message(FATAL_ERROR "Raven Zig: ${RAVEN_ZIG_PORTED_FILE} lists ported sources, so the zig compiler is needed (put zig in PATH, or set RAVEN_ZIG_EXECUTABLE, or -DRAVEN_ZIG=OFF for the C build)")
+		endif()
+
+		# the generated root: imports each translation, and replaces the panic handler of the
+		# standard library (which would drag the stack trace machinery into libraven.a)
+		set(_raven_zig_root "${RAVEN_ZIG_DIR}/src/${RAVEN_ZIG_ROOT_NAME}")
+		set(_raven_zig_text "// Generated by cmake/RavenZig.cmake from zig/ported.txt: do not edit, do not commit.\n")
+		string(APPEND _raven_zig_text "const std = @import(\"std\");\nconst builtin = @import(\"builtin\");\n\n")
+		string(APPEND _raven_zig_text "extern \"c\" fn abort() noreturn;\n")
+		string(APPEND _raven_zig_text "extern \"c\" fn write(fd: c_int, buf: [*]const u8, count: usize) isize;\n")
+		string(APPEND _raven_zig_text "extern \"c\" fn _write(fd: c_int, buf: [*]const u8, count: c_uint) c_int;\n\n")
+		string(APPEND _raven_zig_text "fn ravenPanic(msg: []const u8, ret_addr: ?usize) noreturn {\n    _ = ret_addr;\n")
+		string(APPEND _raven_zig_text "    const prefix = \"Raven (Zig) panic: \";\n")
+		string(APPEND _raven_zig_text "    if (builtin.os.tag == .windows) {\n        _ = _write(2, prefix.ptr, prefix.len);\n        _ = _write(2, msg.ptr, @intCast(msg.len));\n        _ = _write(2, \"\\n\", 1);\n")
+		string(APPEND _raven_zig_text "    } else {\n        _ = write(2, prefix.ptr, prefix.len);\n        _ = write(2, msg.ptr, msg.len);\n        _ = write(2, \"\\n\", 1);\n    }\n    abort();\n}\n\n")
+		string(APPEND _raven_zig_text "pub const panic = std.debug.FullPanic(ravenPanic);\n\n")
+		string(APPEND _raven_zig_text "comptime {\n${_raven_zig_imports}}\n")
+		set(_raven_zig_old "")
+		if(EXISTS "${_raven_zig_root}")
+			file(READ "${_raven_zig_root}" _raven_zig_old)
+		endif()
+		if(NOT _raven_zig_old STREQUAL _raven_zig_text)
+			file(WRITE "${_raven_zig_root}" "${_raven_zig_text}")
+		endif()
+
+		# raven_config: what the C preprocessor options of this configuration are, for the translations
+		# (@import("raven_config"))
+		set(_raven_zig_config "${CMAKE_CURRENT_BINARY_DIR}/zig/raven_config.zig")
+		set(_raven_zig_cfg "// Generated by cmake/RavenZig.cmake: the build options of this Raven configuration.\n")
+		foreach(_raven_zig_opt platform_win32:win32 platform_x11:x11 platform_cocoa:cocoa platform_null:null)
+			string(REPLACE ":" ";" _raven_zig_pair "${_raven_zig_opt}")
+			list(GET _raven_zig_pair 0 _raven_zig_name)
+			list(GET _raven_zig_pair 1 _raven_zig_value)
+			if(RAVEN_PLATFORM_SELECTED STREQUAL "${_raven_zig_value}")
+				string(APPEND _raven_zig_cfg "pub const ${_raven_zig_name} = true;\n")
+			else()
+				string(APPEND _raven_zig_cfg "pub const ${_raven_zig_name} = false;\n")
+			endif()
+		endforeach()
+		foreach(_raven_zig_opt backend_vulkan:RAVEN_BACKEND_VULKAN with_stb_image:RAVEN_WITH_STB_IMAGE build_web:RAVEN_BUILD_WEB paid:RAVEN_PAID)
+			string(REPLACE ":" ";" _raven_zig_pair "${_raven_zig_opt}")
+			list(GET _raven_zig_pair 0 _raven_zig_name)
+			list(GET _raven_zig_pair 1 _raven_zig_value)
+			if(${_raven_zig_value})
+				string(APPEND _raven_zig_cfg "pub const ${_raven_zig_name} = true;\n")
+			else()
+				string(APPEND _raven_zig_cfg "pub const ${_raven_zig_name} = false;\n")
+			endif()
+		endforeach()
+		file(WRITE "${_raven_zig_config}.tmp" "${_raven_zig_cfg}")
+		configure_file("${_raven_zig_config}.tmp" "${_raven_zig_config}" COPYONLY)
+
+		# the object
+		set(RAVEN_ZIG_OBJECT "${CMAKE_CURRENT_BINARY_DIR}/zig/raven_zig${CMAKE_C_OUTPUT_EXTENSION}")
+		# -fno-stack-check: Zig emits __zig_probe_stack for large stack frames, and that symbol is
+		# not in the object without the compiler runtime, so every link of libraven.a fails. The
+		# compiler runtime itself adds ~470 symbols and needs libm, so it is not used here.
+		set(_raven_zig_args build-obj -O${RAVEN_ZIG_OPTIMIZE} -lc -fno-stack-check)
+		if(NOT WIN32)
+			list(APPEND _raven_zig_args -fPIC)
+		endif()
+		set(_raven_zig_target "${RAVEN_ZIG_TARGET}")
+		if(NOT _raven_zig_target AND APPLE)
+			# the host macOS version is newer than what clang targets by default: the linker would warn
+			if(CMAKE_OSX_DEPLOYMENT_TARGET)
+				set(_raven_zig_osx "${CMAKE_OSX_DEPLOYMENT_TARGET}")
+			else()
+				execute_process(COMMAND sw_vers -productVersion OUTPUT_VARIABLE _raven_zig_osx OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
+				string(REGEX REPLACE "^([0-9]+).*" "\\1.0" _raven_zig_osx "${_raven_zig_osx}")
+			endif()
+			if(CMAKE_OSX_ARCHITECTURES MATCHES "x86_64" OR (NOT CMAKE_OSX_ARCHITECTURES AND CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64"))
+				set(_raven_zig_arch "x86_64")
+			else()
+				set(_raven_zig_arch "aarch64")
+			endif()
+			if(_raven_zig_osx)
+				set(_raven_zig_target "${_raven_zig_arch}-macos.${_raven_zig_osx}")
+			endif()
+		endif()
+		if(_raven_zig_target)
+			list(APPEND _raven_zig_args -target ${_raven_zig_target})
+		endif()
+		list(APPEND _raven_zig_args --name raven_zig
+			--cache-dir "${CMAKE_CURRENT_BINARY_DIR}/zig/cache"
+			--dep raven_config --dep raven -Mroot=${_raven_zig_root}
+			-Mraven_config=${_raven_zig_config} -Mraven=${RAVEN_ZIG_DIR}/src/raven/raven.zig
+			-femit-bin=${RAVEN_ZIG_OBJECT})
+		file(GLOB_RECURSE _raven_zig_sources CONFIGURE_DEPENDS "${RAVEN_ZIG_DIR}/src/*.zig")
+		list(FILTER _raven_zig_sources EXCLUDE REGEX "/\\.[^/]*$")
+		add_custom_command(
+			OUTPUT "${RAVEN_ZIG_OBJECT}"
+			COMMAND "${CMAKE_COMMAND}" -E make_directory "${CMAKE_CURRENT_BINARY_DIR}/zig"
+			COMMAND "${_raven_zig_exe}" ${_raven_zig_args}
+			DEPENDS ${_raven_zig_sources} "${_raven_zig_root}" "${_raven_zig_config}" "${RAVEN_ZIG_PORTED_FILE}"
+			COMMENT "Zig: translated Raven sources (${RAVEN_ZIG_OPTIMIZE}): ${RAVEN_ZIG_PORTED}"
+			VERBATIM)
+		set_source_files_properties("${RAVEN_ZIG_OBJECT}" PROPERTIES EXTERNAL_OBJECT TRUE GENERATED TRUE)
+		list(LENGTH RAVEN_ZIG_PORTED _raven_zig_count)
+		message(STATUS "Raven Zig: ${_raven_zig_count} source file(s) translated to Zig (${RAVEN_ZIG_OPTIMIZE})")
+	endif()
+endmacro()

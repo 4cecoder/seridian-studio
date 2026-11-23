@@ -1,0 +1,6 @@
+designer_ide PASS
+designer_ide_clean PASS
+designer_ide_folder PASS
+designer_native PASS
+designer_preview PASS
+designer_script PASS

@@ -1,0 +1,19 @@
+.{
+    .name = .daw,
+    .version = "0.1.0",
+    .fingerprint = 0x2180497c731c2e5,
+    .minimum_zig_version = "0.18.0-dev.738+ae9a8acc7",
+
+    .dependencies = .{},
+
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "src",
+        "vendor/raven",
+        "README.md",
+        "THIRD_PARTY_NOTICES.md",
+        "libs",
+        "docs",
+    },
+}

@@ -1,0 +1,11 @@
+# build trees, caches and generated roots (CMake writes src/root.zig and src/.root_<tag>.zig from ported.txt)
+_build/
+.zig-cache/
+zig-out/
+__pycache__/
+src/root.zig
+src/.root_*.zig
+src/.unit_*.zig
+src/.doc_*.zig
+src/core/.doc_*.zig
+src/.designer_root.zig

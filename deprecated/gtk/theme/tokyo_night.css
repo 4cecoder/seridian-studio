@@ -1,0 +1,195 @@
+/* Tokyo Night Dark Theme for GTK4 DAW */
+
+/* Color definitions - Tokyo Night */
+@define-color bg_color #1a1b26;
+@define-color bg_dark #16161e;
+@define-color bg_highlight #292e42;
+@define-color fg_color #c0caf5;
+@define-color fg_dark #a9b1d6;
+@define-color comment_color #565f89;
+@define-color cyan #7dcfff;
+@define-color green #9ece6a;
+@define-color orange #ff9e64;
+@define-color purple #bb9af7;
+@define-color red #f7768e;
+@define-color yellow #e0af68;
+@define-color blue #7aa2f7;
+
+/* Base window styling */
+window {
+    background-color: @bg_color;
+    color: @fg_color;
+}
+
+/* Box containers */
+box {
+    background-color: transparent;
+}
+
+/* Labels */
+label {
+    color: @fg_color;
+}
+
+/* Buttons - default style */
+button {
+    background-color: @bg_highlight;
+    color: @fg_color;
+    border: 1px solid @comment_color;
+    border-radius: 4px;
+    padding: 4px 12px;
+    min-height: 24px;
+}
+
+button:hover {
+    background-color: alpha(@blue, 0.3);
+    border-color: @blue;
+}
+
+button:active {
+    background-color: alpha(@blue, 0.5);
+}
+
+button:focus {
+    outline: 2px solid alpha(@blue, 0.5);
+    outline-offset: 1px;
+}
+
+/* Destructive action (recording) */
+button.destructive-action {
+    background-color: alpha(@red, 0.3);
+    border-color: @red;
+    color: @red;
+}
+
+button.destructive-action:hover {
+    background-color: alpha(@red, 0.5);
+}
+
+/* Frames */
+frame {
+    background-color: @bg_dark;
+    border: 1px solid @bg_highlight;
+    border-radius: 4px;
+}
+
+frame > label {
+    color: @fg_dark;
+    font-weight: bold;
+}
+
+/* Spin buttons (BPM, time signature) */
+spinbutton {
+    background-color: @bg_highlight;
+    color: @fg_color;
+    border: 1px solid @comment_color;
+    border-radius: 4px;
+}
+
+spinbutton:focus {
+    border-color: @blue;
+}
+
+spinbutton button {
+    background-color: transparent;
+    border: none;
+    padding: 0 4px;
+}
+
+spinbutton button:hover {
+    background-color: alpha(@blue, 0.2);
+}
+
+/* Sliders (faders) */
+scale {
+    background-color: transparent;
+}
+
+scale trough {
+    background-color: @bg_highlight;
+    border-radius: 4px;
+    min-width: 8px;
+    min-height: 8px;
+}
+
+scale highlight {
+    background-color: @blue;
+    border-radius: 4px;
+}
+
+scale slider {
+    background-color: @fg_dark;
+    border-radius: 50%;
+    min-width: 16px;
+    min-height: 16px;
+}
+
+scale slider:hover {
+    background-color: @fg_color;
+}
+
+/* Drawing areas */
+drawingarea {
+    background-color: @bg_dark;
+}
+
+/* Status bar */
+.statusbar {
+    background-color: @bg_dark;
+    border-top: 1px solid @bg_highlight;
+}
+
+.statusbar label {
+    color: @comment_color;
+}
+
+/* Scrollbars */
+scrollbar {
+    background-color: @bg_color;
+}
+
+scrollbar slider {
+    background-color: @comment_color;
+    border-radius: 4px;
+    min-width: 8px;
+    min-height: 8px;
+}
+
+scrollbar slider:hover {
+    background-color: @fg_dark;
+}
+
+/* Header bar (if used) */
+headerbar {
+    background-color: @bg_dark;
+    border-bottom: 1px solid @bg_highlight;
+    color: @fg_color;
+}
+
+/* Entry fields */
+entry {
+    background-color: @bg_highlight;
+    color: @fg_color;
+    border: 1px solid @comment_color;
+    border-radius: 4px;
+    padding: 4px 8px;
+}
+
+entry:focus {
+    border-color: @blue;
+}
+
+/* Separator */
+separator {
+    background-color: @bg_highlight;
+    min-width: 1px;
+    min-height: 1px;
+}
+
+/* Tooltips */
+tooltip {
+    background-color: @bg_highlight;
+    color: @fg_color;
+    border: 1px solid @comment_color;
+    border-radius: 4px;
+}

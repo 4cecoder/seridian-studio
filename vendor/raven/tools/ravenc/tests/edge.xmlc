@@ -1,0 +1,23 @@
+﻿<?xml version="1.0"?>
+<!DOCTYPE raven>
+<!-- a comment -->
+<script>static int n = 0; /* a < b && c > d ?? */
+static void on_ok(Rid s, const char* a, void* u) { n++; }
+</script>
+<Window Title='Single "quotes" &amp; &lt;&gt; &quot;&apos;' Width="400" Height="300">
+  <Widget Name="Card" Text="">
+    <Label Name="inner" Text="{Text}" OnClicked="{Text}"/>
+  </Widget>
+  <VBox Name="box">
+    <Label Name="status">  Tab	here &#65;&#x42;&#X43; &#x1F600; &#233; ??= trigraph
+  line two  </Label>
+    <Button Name="ok" Text="OK" OnClicked="{ on_ok }" Action="{on_ok}"/>
+    <Button Name="ok" Text="dup" OnActivated="{App.on_other}" OnChanged="plain.action"/>
+    <Label Name="not an identifier" Text="ctl &#1;&#127; del été"/>
+    <TextInput Name="input" OnCommitted="{ns::ui::commit}" Hint="&#x9;tab"><![CDATA[raw <text> & stuff]]></TextInput>
+    <Card Text="used"/>
+  </VBox>
+</Window>
+<script>
+int main(void) { return 0; }
+</script>
