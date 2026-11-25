@@ -450,6 +450,7 @@ pub fn refresh_after_load() void {
     fns.piano_undo_reset();
     fns.piano_roll_reload();
     fns.populate_timeline();
+    fns.track_names_refresh();
     rebuild_fx_slots();
     update_project_title();
     // The loaded tempo goes to the engine and the spin box only: routing it through bpm_apply would mark the

@@ -190,6 +190,7 @@ fn control_set_name(argv: [*c][*c]u8, argc: c_int) [*c]const u8 {
     track_name_text[used] = 0;
     if (!control_limits.isValidTrackName(track_name_text[0..used])) return control_limits.name_message;
     ext.project_set_track_name(track, &track_name_text);
+    fns.track_names_refresh();
     return null;
 }
 

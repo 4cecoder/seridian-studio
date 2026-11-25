@@ -12,7 +12,41 @@ const piano_math = @import("../piano_math.zig");
 const ui_state = @import("../ui_state.zig");
 const window_input = @import("../window_input.zig");
 
+const track_names = @import("../track_names.zig");
+
 const app = &st.app;
+
+var name_cache: track_names.NameCache = .{};
+
+fn relabel_track_combo(combo: raven.Rid) void {
+    if (combo == raven.R_INVALID_ID) return;
+    const selected = raven.Rcombo_box_get_selected(combo);
+    raven.Rcombo_box_clear_items(combo);
+    fns.add_track_combo_items(combo);
+    raven.Rcombo_box_set_selected(combo, selected);
+}
+
+/// Makes every place that shows a track name show the current one: the arrangement track label, the mixer
+/// strip, the track pickers and the piano roll window title. Only names that changed since the last call
+/// touch any widget, so it is cheap to call after every command.
+pub fn track_names_refresh() void {
+    var changed = false;
+    var track: c_int = 0;
+    while (track < st.SERIDIAN_TRACK_COUNT) : (track += 1) {
+        var fallback: [16]u8 = undefined;
+        const name = track_display_name(track, &fallback, fallback.len);
+        if (name_cache.update(@intCast(track), std.mem.span(@as([*:0]const u8, @ptrCast(name))))) {
+            changed = true;
+            if (app.timeline != raven.R_INVALID_ID) raven.Rtimeline_set_track_name(app.timeline, track, name);
+        }
+    }
+    if (!changed) return;
+    fns.mixer_sync_all();
+    relabel_track_combo(app.piano_track_combo);
+    relabel_track_combo(app.fx_track_combo);
+    relabel_track_combo(app.midi_track_combo);
+    fns.popout_refresh_title();
+}
 
 pub fn track_color(track: c_int) [*c]const palette.SeridianTrackColor {
     return palette.palette_track_color_at(app.track_color_index[@intCast(track)]);

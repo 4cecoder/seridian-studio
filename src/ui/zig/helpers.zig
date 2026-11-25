@@ -27,4 +27,5 @@ test {
     _ = @import("idle_inhibit.zig");
     _ = @import("idle_inhibit_linux.zig");
     _ = @import("scroll_wrap.zig");
+    _ = @import("track_names.zig");
 }

@@ -14,6 +14,7 @@ const idle_inhibit_ui = @import("idle_inhibit_ui.zig");
 
 pub const track_color = widgets.track_color;
 pub const track_display_name = widgets.track_display_name;
+pub const track_names_refresh = widgets.track_names_refresh;
 pub const make_row = widgets.make_row;
 pub const make_column = widgets.make_column;
 pub const make_panel = widgets.make_panel;
