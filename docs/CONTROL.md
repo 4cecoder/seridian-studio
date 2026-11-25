@@ -48,7 +48,7 @@ Limits:
 | Line length | 128 bytes per request including the newline, so a command is at most 127 bytes. A longer one gets `error: line too long`. |
 | Commands per request | One. Anything after the newline, in the same request, is refused with `error: send one command per request` and nothing runs. A NUL byte in the line is refused with `error: the command contains a NUL byte`. |
 | Words per line | 8, separated by spaces, tabs or `\r`. More gets `error: too many arguments`. |
-| Path length | 1 to 120 bytes, no spaces. Empty gets `error: path is empty`, longer `error: path is too long`. |
+| Path length | 1 to 120 bytes, no spaces. A longer one gets `error: path is too long`. A missing path is a usage error (`error: usage: save <path>`), because the line is split on spaces. |
 | Client slots | 8 connections at a time. A ninth is closed at once with no reply. |
 | Idle client | A client is dropped with no reply after 90 frames without a complete line. That is about 3 seconds in the window, but the headless build spins faster and drops after roughly 10 ms, so send the line right after connecting (QA B28). |
 | Reply length | 511 bytes; a longer message is cut. |
@@ -156,17 +156,26 @@ for `auto` and `eq`.
 | `open PATH` | `ok`. Replaces the session with the one in the folder and stops playback. |
 | `export PATH` | `ok peak P` (P is the peak of the 16-bit stereo WAV, three decimals). Playback must be stopped: `stop playback before exporting`. |
 
-A failure names the path and the cause from the operating system or the engine:
+A failure names the path and the cause from the operating system or the engine. Errors for files (the text is
+checked against the app by the e2e test `doc_error_texts`):
 
 ```
-error: could not create the folder /usr/x: permission denied
-error: could not save the session to /srv/x: read-only file system
-error: could not open the session /nowhere: no project.daw in that folder
-error: could not export the WAV to /proc/version/a.wav: not a directory
+error: could not create the folder /usr/seridian-e2e/x: permission denied
+error: could not create the folder /proc/version/x: not a directory
+error: could not create the folder /proc/version: not a directory
+error: could not open the session /nonexistent-e2e: no project.daw in that folder
+error: could not export the WAV to /proc/version/out.wav: not a directory
+error: usage: save <path>
+error: usage: open <path>
+error: usage: export <path>
+error: path is too long
 ```
+
+The last four are the argument errors: no path or two paths (`usage:`), and a path over 120 bytes.
+Writing the session can also fail after the folder exists: `error: could not save the session to PATH: CAUSE`.
 
 Causes include `permission denied`, `no such file or directory`, `not a directory`, `is a directory`,
-`no space left on the device`, `read-only file system`, `file name too long`, `already exists`,
+`no space left on the device`, `read-only file system`, `file name too long`, `already exists`, `invalid path`, `file is busy`,
 `no project.daw in that folder`. A cause without a plain wording is reported as `unexpected error (Name)`.
 
 ### Errors that apply to every command

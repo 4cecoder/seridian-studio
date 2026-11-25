@@ -136,7 +136,11 @@ pub fn make_directory_tree(path: [*c]const u8) c_int {
     }
     if (libc.mkdir(&buffer, 0o755) != 0 and libc.errno() != libc.EEXIST) return -1;
     var info: libc.Stat = undefined;
-    if (libc.stat(&buffer, &info) != 0 or !libc.S_ISDIR(info.st_mode)) return -1;
+    if (libc.stat(&buffer, &info) != 0) return -1;
+    if (!libc.S_ISDIR(info.st_mode)) {
+        libc.set_errno(libc.ENOTDIR); // the path exists but is not a folder: say so, not "file exists"
+        return -1;
+    }
     return 0;
 }
 

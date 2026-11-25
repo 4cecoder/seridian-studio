@@ -6,7 +6,7 @@
 # kills only the pid it started.
 #
 # Usage: tests/e2e/control_regressions.sh [test-name ...]
-#   tests: open_restores_bpm_and_master, relative_paths_are_absolute, one_command_per_request, single_instance, instruments_round_trip, reverb_from_the_cli, transport_replies, note_limits_agree, file_errors_name_the_cause, state_is_fresh_after_a_command, track_names, effects_survive_save_and_open, open_validates_track_names, auto_beat_limit, plain_decimals_only
+#   tests: open_restores_bpm_and_master, relative_paths_are_absolute, one_command_per_request, single_instance, instruments_round_trip, reverb_from_the_cli, transport_replies, note_limits_agree, file_errors_name_the_cause, state_is_fresh_after_a_command, track_names, effects_survive_save_and_open, open_validates_track_names, auto_beat_limit, plain_decimals_only, doc_error_texts
 # Requires: zig-out/bin/seridian and zig-out/bin/seridian-studio-headless
 #   (zig build -Dheadless=true), jq, python3. Exit code 0 when all selected tests pass.
 
@@ -436,7 +436,27 @@ test_plain_decimals_only() {
     "$CLI" set 1 reverb off >/dev/null
 }
 
-ALL="open_restores_bpm_and_master relative_paths_are_absolute one_command_per_request single_instance instruments_round_trip reverb_from_the_cli transport_replies note_limits_agree file_errors_name_the_cause state_is_fresh_after_a_command track_names effects_survive_save_and_open open_validates_track_names auto_beat_limit plain_decimals_only"
+# Every error line quoted in docs/CONTROL.md under "Errors for files" must be exactly what the app says.
+test_doc_error_texts() {
+    echo "== the error texts quoted in docs/CONTROL.md are the ones the app answers (B30, B31)"
+    local doc="$ROOT/docs/CONTROL.md" long expected got
+    long="$(printf 'x%.0s' $(seq 1 120))"
+    check_doc() { # description, expected line, actual line
+        if [ "$3" != "$2" ]; then fail "$1: app says '$3', wanted '$2'"; return; fi
+        if grep -qxF -- "$2" "$doc"; then pass "$1: $2"; else fail "$1: docs/CONTROL.md does not quote '$2'"; fi
+    }
+    check_doc "save into a folder we may not create" "error: could not create the folder /usr/seridian-e2e/x: permission denied" "$("$CLI" save /usr/seridian-e2e/x 2>&1)"
+    check_doc "save below a file" "error: could not create the folder /proc/version/x: not a directory" "$("$CLI" save /proc/version/x 2>&1)"
+    check_doc "save onto a file" "error: could not create the folder /proc/version: not a directory" "$("$CLI" save /proc/version 2>&1)"
+    check_doc "open a missing session" "error: could not open the session /nonexistent-e2e: no project.daw in that folder" "$("$CLI" open /nonexistent-e2e 2>&1)"
+    check_doc "export below a file" "error: could not export the WAV to /proc/version/out.wav: not a directory" "$("$CLI" export /proc/version/out.wav 2>&1)"
+    check_doc "save without a path" "error: usage: save <path>" "$(raw_send 'save \n')"
+    check_doc "open without a path" "error: usage: open <path>" "$(raw_send 'open\n')"
+    check_doc "export with two paths" "error: usage: export <path>" "$(raw_send 'export /x /y\n')"
+    check_doc "a path over 120 bytes" "error: path is too long" "$(raw_send "save /$long\\n")"
+}
+
+ALL="open_restores_bpm_and_master relative_paths_are_absolute one_command_per_request single_instance instruments_round_trip reverb_from_the_cli transport_replies note_limits_agree file_errors_name_the_cause state_is_fresh_after_a_command track_names effects_survive_save_and_open open_validates_track_names auto_beat_limit plain_decimals_only doc_error_texts"
 SELECTED="${*:-$ALL}"
 for name in $SELECTED; do
     "test_$name"

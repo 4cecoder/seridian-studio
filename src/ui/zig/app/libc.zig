@@ -69,6 +69,7 @@ pub fn S_ISDIR(mode: u32) bool {
 
 // errno values (Linux).
 pub const EEXIST: c_int = @backingInt(linux.E.EXIST);
+pub const ENOTDIR: c_int = @backingInt(linux.E.NOTDIR);
 pub const ENOENT: c_int = @backingInt(linux.E.NOENT);
 pub const EINTR: c_int = @backingInt(linux.E.INTR);
 pub const EAGAIN: c_int = @backingInt(linux.E.AGAIN);
