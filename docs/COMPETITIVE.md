@@ -101,3 +101,28 @@ Beat it (what Ableton does not do):
 | One keymap table drives the shortcuts, the help screen and (planned) the command palette, so they cannot disagree | Ableton's help is separate from its bindings |
 
 Next after the layout work: Session view with clip launching, the device chain strip, Capture MIDI.
+
+## Benchmark: a better Logic, for free
+
+Logic wins on what is included: a full instrument and loop library, a Drummer that plays
+believable parts, Smart Controls (a few knobs that move many parameters), Flex Time and Flex
+Pitch, Track Stacks, a score editor, and a mixer with inserts, sends and busses. The price is a
+Mac. Seridian is free, open source and runs on Linux, so it only has to be good enough that
+nobody needs to pay for the parts Logic includes.
+
+| Logic strength | Seridian status | work item |
+|----------------|-----------------|-----------|
+| Included instruments that sound finished | have, physically modelled (piano, strings, brass, clarinet, percussion, pluck, drum kits) | keep improving realism; presets per genre |
+| Drummer: pattern-aware drum parts | no | a drum pattern generator (swing, ghost notes, fills) behind one command; the lofi arrangement already does this in a script |
+| Smart Controls: a few macro knobs per track | no | per-track macro strip mapped to instrument and EQ parameters |
+| Flex Time and Flex Pitch | part (libs/analysis, vocal pitch correction exist) | audio warp and pitch editing in the clip view |
+| Track Stacks and busses, sends | no | folders and bus tracks in the mixer |
+| Pitch correction and vocal chain | have (Vocal Strip) | expose it as an insert in the device chain |
+| Score and piano roll | piano roll only | score view is P3 |
+| Mastering assistant | have (mastering chain, loudness meter, -14 LUFS target) | one-click "master to LUFS" command and button |
+| Loops and sample library | deliberately no | modelled instruments plus the generator replace packs |
+
+Where free beats Logic: no purchase, no Mac, a command line that builds and renders whole songs,
+scriptable mastering to a loudness target, and source anyone can fix. The credibility work in the
+layout round comes first; the Drummer-style generator and macro knobs are the cheapest features
+that make the included sounds feel as complete as Logic's.
