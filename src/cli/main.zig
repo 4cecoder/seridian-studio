@@ -693,7 +693,11 @@ fn usageFor(name: []const u8) []const u8 {
 /// prints the one-line reply. "ok" exits 0; anything else is an error, exit 1.
 fn sendCommand(allocator: std.mem.Allocator, io: std.Io, env: *const Env, name: []const u8, args: []const []const u8) !u8 {
     var line_buf: [256]u8 = undefined;
-    const line = buildLine(&line_buf, name, args) catch return usageError(io, usageFor(name));
+    const line = buildLine(&line_buf, name, args) catch {
+        var problem_buf: [200]u8 = undefined;
+        try printErr(io, "error: {s}\n", .{describeProblem(&problem_buf, name, args)});
+        return usageError(io, usageFor(name));
+    };
 
     const path = try socketPath(allocator, env);
     defer allocator.free(path);
@@ -877,6 +881,80 @@ fn buildLine(buf: []u8, name: []const u8, args: []const []const u8) ArgError![]c
         return std.fmt.bufPrint(buf, "note {d} {d} {d} {d} {d}", .{ track, pitch, start, length, velocity }) catch too_long;
     }
     return error.InvalidArgs;
+}
+
+/// Explains why `buildLine` rejected the arguments: which one is wrong, what it may be, and what was
+/// given. The text lives in `buf`; shapes this does not recognise get a plain fallback.
+fn describeProblem(buf: []u8, name: []const u8, args: []const []const u8) []const u8 {
+    const fallback = "invalid arguments";
+    const eql = std.mem.eql;
+    if (eql(u8, name, "note")) {
+        if (args.len != 4 and args.len != 5) return countProblem(buf, "note takes 4 or 5 arguments", args.len);
+        if (intProblem(buf, "track", args[0], 1, max_track)) |m| return m;
+        if (intProblem(buf, "pitch", args[1], 0, 127)) |m| return m;
+        if (parseFloatIn(args[2], 0, 1e9)) |_| {} else |_| return given(buf, "start must be a number of beats 0 or more", args[2]);
+        const length_ok = if (parseFloatIn(args[3], 0, 1e9)) |v| v > 0 else |_| false;
+        if (!length_ok) return given(buf, "length must be greater than 0", args[3]);
+        if (args.len == 5) if (intProblem(buf, "velocity", args[4], 1, 127)) |m| return m;
+        return fallback;
+    }
+    if (eql(u8, name, "bpm")) {
+        if (args.len != 1) return countProblem(buf, "bpm takes 1 argument", args.len);
+        return floatProblem(buf, "tempo", args[0], 20, 300) orelse fallback;
+    }
+    if (eql(u8, name, "clear")) {
+        if (args.len != 1) return countProblem(buf, "clear takes 1 argument", args.len);
+        return intProblem(buf, "track", args[0], 1, max_track) orelse fallback;
+    }
+    if (eql(u8, name, "set")) {
+        if (args.len != 3) return countProblem(buf, "set takes 3 arguments", args.len);
+        if (intProblem(buf, "track", args[0], 1, max_track)) |m| return m;
+        const field = args[1];
+        if (eql(u8, field, "gain")) return floatProblem(buf, "gain", args[2], 0, 1.5) orelse fallback;
+        if (eql(u8, field, "pan")) return floatProblem(buf, "pan", args[2], -1, 1) orelse fallback;
+        if (eql(u8, field, "mute") or eql(u8, field, "solo") or eql(u8, field, "arm")) {
+            const what = std.fmt.bufPrint(buf, "{s} must be on or off", .{field}) catch return fallback;
+            return given(buf[what.len..], what, args[2]);
+        }
+        if (eql(u8, field, "instrument")) return "instrument must be a name of 1 to 32 characters without spaces";
+        return std.fmt.bufPrint(buf, "unknown setting '{s}'; use gain, pan, mute, solo, arm or instrument", .{field}) catch fallback;
+    }
+    if (eql(u8, name, "eq")) {
+        if (args.len != 3) return countProblem(buf, "eq takes 3 arguments", args.len);
+        if (eql(u8, args[0], "master")) return "eq master takes: tilt on|off";
+        if (intProblem(buf, "track", args[0], 1, max_track)) |m| return m;
+        if (!eql(u8, args[1], "preset")) return "eq takes: <track> preset NAME, or master tilt on|off";
+        return std.fmt.bufPrint(buf, "unknown preset '{s}'; use drums, bass, pads, lead or harp", .{args[2]}) catch fallback;
+    }
+    if (eql(u8, name, "auto") and args.len == 4 and !eql(u8, args[0], "master")) {
+        if (intProblem(buf, "track", args[0], 1, max_track)) |m| return m;
+        if (!isAutoLane(args[1])) return given(buf, "lane must be gain, pan or wet", args[1]);
+        if (floatProblem(buf, "beat", args[2], 0, 1e6)) |m| return m;
+        const low: f64 = if (eql(u8, args[1], "pan")) -1 else 0;
+        return floatProblem(buf, "value", args[3], low, 1) orelse fallback;
+    }
+    return fallback;
+}
+
+/// "<what>, got '<text>'" rendered into `buf`.
+fn given(buf: []u8, what: []const u8, text: []const u8) []const u8 {
+    return std.fmt.bufPrint(buf, "{s}, got '{s}'", .{ what, text }) catch "invalid arguments";
+}
+
+fn countProblem(buf: []u8, what: []const u8, got: usize) []const u8 {
+    return std.fmt.bufPrint(buf, "{s}, got {d}", .{ what, got }) catch "invalid arguments";
+}
+
+/// A message when `text` is not a whole number in min..max; null when it is.
+fn intProblem(buf: []u8, label: []const u8, text: []const u8, min: i64, max: i64) ?[]const u8 {
+    if (parseIntIn(text, min, max)) |_| return null else |_| {}
+    return std.fmt.bufPrint(buf, "{s} must be a whole number {d}..{d}, got '{s}'", .{ label, min, max, text }) catch "invalid arguments";
+}
+
+/// A message when `text` is not a finite number in min..max; null when it is.
+fn floatProblem(buf: []u8, label: []const u8, text: []const u8, min: f64, max: f64) ?[]const u8 {
+    if (parseFloatIn(text, min, max)) |_| return null else |_| {}
+    return std.fmt.bufPrint(buf, "{s} must be a number {d}..{d}, got '{s}'", .{ label, min, max, text }) catch "invalid arguments";
 }
 
 fn cmdLogs(allocator: std.mem.Allocator, io: std.Io, env: *const Env, args: []const []const u8) !u8 {
@@ -1430,4 +1508,36 @@ test "socket path uses XDG_RUNTIME_DIR" {
     const path = try socketPath(allocator, &env);
     defer allocator.free(path);
     try std.testing.expectEqualStrings("/run/user/1000/seridian.sock", path);
+}
+
+fn expectProblem(expected: []const u8, name: []const u8, args: []const []const u8) !void {
+    var buf: [200]u8 = undefined;
+    try std.testing.expectEqualStrings(expected, describeProblem(&buf, name, args));
+}
+
+test "describeProblem names the argument that is wrong, its range and what was given" {
+    try expectProblem("pitch must be a whole number 0..127, got '200'", "note", &.{ "1", "200", "0", "1" });
+    try expectProblem("pitch must be a whole number 0..127, got 'abc'", "note", &.{ "1", "abc", "0", "1" });
+    try expectProblem("track must be a whole number 1..8, got '9'", "note", &.{ "9", "60", "0", "1" });
+    try expectProblem("start must be a number of beats 0 or more, got '-3'", "note", &.{ "1", "60", "-3", "1" });
+    try expectProblem("length must be greater than 0, got '0'", "note", &.{ "1", "60", "0", "0" });
+    try expectProblem("velocity must be a whole number 1..127, got '500'", "note", &.{ "1", "60", "0", "1", "500" });
+    try expectProblem("note takes 4 or 5 arguments, got 3", "note", &.{ "1", "60", "0" });
+}
+
+test "describeProblem covers tempo, set, eq, auto and clear" {
+    try expectProblem("tempo must be a number 20..300, got '19'", "bpm", &.{"19"});
+    try expectProblem("bpm takes 1 argument, got 0", "bpm", &.{});
+    try expectProblem("gain must be a number 0..1.5, got '99'", "set", &.{ "1", "gain", "99" });
+    try expectProblem("pan must be a number -1..1, got '2'", "set", &.{ "1", "pan", "2" });
+    try expectProblem("mute must be on or off, got 'maybe'", "set", &.{ "1", "mute", "maybe" });
+    try expectProblem("unknown setting 'colour'; use gain, pan, mute, solo, arm or instrument", "set", &.{ "1", "colour", "3" });
+    try expectProblem("unknown preset 'nope'; use drums, bass, pads, lead or harp", "eq", &.{ "1", "preset", "nope" });
+    try expectProblem("track must be a whole number 1..8, got '0'", "clear", &.{"0"});
+    try expectProblem("lane must be gain, pan or wet, got 'volume'", "auto", &.{ "1", "volume", "0", "0.5" });
+    try expectProblem("value must be a number 0..1, got '2'", "auto", &.{ "1", "gain", "0", "2" });
+}
+
+test "describeProblem falls back to a plain message for shapes it does not know" {
+    try expectProblem("invalid arguments", "play", &.{"extra"});
 }
