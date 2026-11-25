@@ -61,6 +61,7 @@ pub const desktop = @import("system/desktop.zig");
 pub const preflight = @import("system/preflight.zig");
 pub const preflight_types = @import("system/preflight_types.zig");
 pub const preflight_c_api = @import("system/preflight_c_api.zig");
+pub const single_instance = @import("system/single_instance.zig");
 // The UI library's hand-written mirrors of engine C ABI structs.
 pub const ui_abi_test = @import("ui_abi_test.zig");
 

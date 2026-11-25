@@ -49,6 +49,7 @@ QA reopens an item when the fix does not hold. Developers fix test-first.
 | U7 | open | The window keymap skips shortcuts while a text field has focus, but the piano key handler has no such check, so typing in a field while the Piano Roll tab is active may play notes and swallow `z` / `x`. The dialog guard also omits `FILE_SAVE`, so Ctrl+S can stack a second file dialog | `app/piano.zig:583-596` vs `app/actions_popout.zig:196`; guard `:23-26` (code reading, not run) |
 | U8 | open | Save As refuses an existing folder name ("A folder with that name already exists") with no overwrite option, while the socket `save` overwrites any existing folder silently; the two paths disagree | `app/project.zig:~176-190` vs `app/control.zig:~262` |
 | U9 | fixed (guard: keymap.zig test "help: Linux render says Ctrl, never Cmd; macOS says Cmd") | Status message says "Cmd+2" on Linux (the binding is Ctrl+2) | `app/actions_popout.zig:59` |
+| U10 | fixed (guard: single_instance.zig tests "single instance: decide ...", "single instance: probe ..."; e2e `control_regressions.sh single_instance`) | A second `seridian-studio` launch started a second app that fought the first over `seridian.sock`. Now a live owner makes the new process print `Seridian Studio is already running (pid N)` and exit 0 with no window; a stale socket file is removed and start goes on; `--new-instance` skips the check. The running window is not raised: the wm layer has no focus op and the socket has no raise command | `src/main.zig` `claimInstance`, `src/system/single_instance.zig` |
 
 ## Gaps
 

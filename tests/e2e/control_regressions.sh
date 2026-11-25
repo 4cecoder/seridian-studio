@@ -6,7 +6,7 @@
 # kills only the pid it started.
 #
 # Usage: tests/e2e/control_regressions.sh [test-name ...]
-#   tests: open_restores_bpm_and_master, relative_paths_are_absolute, one_command_per_request
+#   tests: open_restores_bpm_and_master, relative_paths_are_absolute, one_command_per_request, single_instance
 # Requires: zig-out/bin/seridian and zig-out/bin/seridian-studio-headless
 #   (zig build -Dheadless=true), jq, python3. Exit code 0 when all selected tests pass.
 
@@ -152,7 +152,46 @@ test_one_command_per_request() {
     esac
 }
 
-ALL="open_restores_bpm_and_master relative_paths_are_absolute one_command_per_request"
+# Counts live processes of this script's app binary that run with our private runtime dir.
+count_apps() {
+    local n=0 p
+    for p in $(pgrep -f "$APP" 2>/dev/null); do
+        if tr '\0' '\n' <"/proc/$p/environ" 2>/dev/null | grep -qx "XDG_RUNTIME_DIR=$RUNTIME"; then n=$((n + 1)); fi
+    done
+    echo "$n"
+}
+
+test_single_instance() {
+    echo "== a second launch exits 0 with a message; a stale socket does not block start (U10)"
+    local err="$WORK/second.err" status started
+    local begin end
+    begin=$(date +%s)
+    timeout 10 "$APP" >"$WORK/second.out" 2>"$err"
+    status=$?
+    end=$(date +%s)
+    [ "$status" -eq 0 ] && pass "second launch exits 0 (got $status)" || fail "second launch exits 0 (got $status)"
+    [ $((end - begin)) -le 5 ] && pass "second launch returns quickly" || fail "second launch returns quickly ($((end - begin)) s)"
+    grep -q "Seridian Studio is already running (pid $APP_PID)" "$err" && pass "message names the running pid" || fail "message names the running pid (got: $(cat "$err"))"
+    [ "$(count_apps)" -eq 1 ] && pass "only one process remains" || fail "only one process remains (got $(count_apps))"
+    [ "$("$CLI" bpm 120 2>/dev/null)" = "ok" ] && pass "first instance still answers" || fail "first instance still answers"
+
+    # Kill the first without letting it clean up, so the socket file stays behind.
+    kill -KILL "$APP_PID" 2>/dev/null
+    wait "$APP_PID" 2>/dev/null
+    [ -S "$RUNTIME/seridian.sock" ] && pass "stale socket file left behind" || fail "stale socket file left behind"
+    cd "$APP_CWD" && { "$APP" >"$WORK/app2.log" 2>&1 & APP_PID=$!; }
+    cd "$ROOT" || return
+    started=0
+    for _ in $(seq 1 100); do
+        if [ "$("$CLI" bpm 120 2>/dev/null)" = "ok" ]; then started=1; break; fi
+        kill -0 "$APP_PID" 2>/dev/null || break
+        sleep 0.2
+    done
+    [ "$started" -eq 1 ] && pass "start over a stale socket answers on the socket" || fail "start over a stale socket answers on the socket (log: $(cat "$WORK/app2.log"))"
+    [ "$(count_apps)" -eq 1 ] && pass "exactly one process after the restart" || fail "exactly one process after the restart (got $(count_apps))"
+}
+
+ALL="open_restores_bpm_and_master relative_paths_are_absolute one_command_per_request single_instance"
 SELECTED="${*:-$ALL}"
 for name in $SELECTED; do
     "test_$name"
