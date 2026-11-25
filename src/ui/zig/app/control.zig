@@ -330,11 +330,16 @@ pub fn control_run_line(line: [*c]u8) [*c]const u8 {
     if (argc == 0) return "empty command";
     const name: [*c]const u8 = argv[0];
     if (libc.strcmp(name, "play") == 0 and argc == 1) {
-        if (ext.audio_engine_is_playing(app.engine) == 0) fns.on_play(raven.R_INVALID_ID, null);
-        return if (ext.audio_engine_is_playing(app.engine) != 0) null else "could not start the audio engine";
+        const already = ext.audio_engine_is_playing(app.engine) != 0;
+        if (!already) fns.on_play(raven.R_INVALID_ID, null);
+        if (ext.audio_engine_is_playing(app.engine) == 0) return "could not start the audio engine";
+        _ = libc.snprintf(&st.control_ok_detail, st.control_ok_detail.len, "%s", @as([*c]const u8, if (already) "playing (already)" else "playing"));
+        return null;
     }
     if (libc.strcmp(name, "stop") == 0 and argc == 1) {
+        const already = ext.audio_engine_is_playing(app.engine) == 0;
         fns.on_stop(raven.R_INVALID_ID, null);
+        _ = libc.snprintf(&st.control_ok_detail, st.control_ok_detail.len, "%s", @as([*c]const u8, if (already) "stopped (already)" else "stopped"));
         return null;
     }
     if (libc.strcmp(name, "bpm") == 0) {

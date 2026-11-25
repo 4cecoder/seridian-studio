@@ -6,7 +6,7 @@
 # kills only the pid it started.
 #
 # Usage: tests/e2e/control_regressions.sh [test-name ...]
-#   tests: open_restores_bpm_and_master, relative_paths_are_absolute, one_command_per_request, single_instance, instruments_round_trip, reverb_from_the_cli
+#   tests: open_restores_bpm_and_master, relative_paths_are_absolute, one_command_per_request, single_instance, instruments_round_trip, reverb_from_the_cli, transport_replies
 # Requires: zig-out/bin/seridian and zig-out/bin/seridian-studio-headless
 #   (zig build -Dheadless=true), jq, python3. Exit code 0 when all selected tests pass.
 
@@ -238,7 +238,24 @@ test_reverb_from_the_cli() {
     got="$(wait_text '.tracks[0].reverb.present' false)" && pass "state reports the reverb gone" || fail "state reports the reverb gone (got $got)"
 }
 
-ALL="open_restores_bpm_and_master relative_paths_are_absolute one_command_per_request single_instance instruments_round_trip reverb_from_the_cli"
+test_transport_replies() {
+    echo "== play and stop report the transport state and whether it changed (G3)"
+    local out status
+    "$CLI" stop >/dev/null 2>&1
+    out="$("$CLI" play 2>&1)"; status=$?
+    [ "$out" = "ok playing" ] && [ "$status" -eq 0 ] && pass "play prints 'ok playing', exit 0" || fail "play prints 'ok playing', exit 0 (got '$out', $status)"
+    out="$("$CLI" play 2>&1)"; status=$?
+    [ "$out" = "ok playing (already)" ] && [ "$status" -eq 0 ] && pass "second play prints 'ok playing (already)', exit 0" || fail "second play (got '$out', $status)"
+    out="$("$CLI" stop 2>&1)"; status=$?
+    [ "$out" = "ok stopped" ] && [ "$status" -eq 0 ] && pass "stop prints 'ok stopped', exit 0" || fail "stop prints 'ok stopped', exit 0 (got '$out', $status)"
+    out="$("$CLI" stop 2>&1)"; status=$?
+    [ "$out" = "ok stopped (already)" ] && [ "$status" -eq 0 ] && pass "second stop prints 'ok stopped (already)', exit 0" || fail "second stop (got '$out', $status)"
+    out="$(raw_send 'play\n')"
+    [ "$out" = "ok playing" ] && pass "raw play replies 'ok playing'" || fail "raw play replies 'ok playing' (got '$out')"
+    "$CLI" stop >/dev/null 2>&1
+}
+
+ALL="open_restores_bpm_and_master relative_paths_are_absolute one_command_per_request single_instance instruments_round_trip reverb_from_the_cli transport_replies"
 SELECTED="${*:-$ALL}"
 for name in $SELECTED; do
     "test_$name"
