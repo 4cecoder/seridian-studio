@@ -462,7 +462,11 @@ pub fn control_poll() void {
                 } else if (libc.strlen(&client.line) != line_length) {
                     control_reply(client.fd, "the command contains a NUL byte");
                 } else {
-                    control_reply(client.fd, control_run_line(&client.line));
+                    const problem = control_run_line(&client.line);
+                    // The state file is rewritten before the reply, so `seridian state` right after a command
+                    // never shows the value from before it.
+                    fns.write_state_snapshot();
+                    control_reply(client.fd, problem);
                 }
                 control_drop(client);
             } else if (client.length >= st.CONTROL_LINE_CAPACITY) {

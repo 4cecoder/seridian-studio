@@ -6,7 +6,7 @@
 # kills only the pid it started.
 #
 # Usage: tests/e2e/control_regressions.sh [test-name ...]
-#   tests: open_restores_bpm_and_master, relative_paths_are_absolute, one_command_per_request, single_instance, instruments_round_trip, reverb_from_the_cli, transport_replies, note_limits_agree, file_errors_name_the_cause
+#   tests: open_restores_bpm_and_master, relative_paths_are_absolute, one_command_per_request, single_instance, instruments_round_trip, reverb_from_the_cli, transport_replies, note_limits_agree, file_errors_name_the_cause, state_is_fresh_after_a_command
 # Requires: zig-out/bin/seridian and zig-out/bin/seridian-studio-headless
 #   (zig build -Dheadless=true), jq, python3. Exit code 0 when all selected tests pass.
 
@@ -283,7 +283,46 @@ expect_error() {
     if [ "$3" = "$2" ]; then pass "$1: $3"; else fail "$1 (want '$2', got '$3')"; fi
 }
 
-ALL="open_restores_bpm_and_master relative_paths_are_absolute one_command_per_request single_instance instruments_round_trip reverb_from_the_cli transport_replies note_limits_agree file_errors_name_the_cause"
+test_state_is_fresh_after_a_command() {
+    echo "== state right after a command shows that command's result (B4)"
+    # One process sends the command and reads the state file the moment the reply arrives, so no CLI
+    # start-up time hides a lagging snapshot.
+    local stale
+    stale="$(python3 -I - "$RUNTIME" <<'PY'
+import json, socket, sys
+runtime = sys.argv[1]
+stale = 0
+def send(line):
+    s = socket.socket(socket.AF_UNIX)
+    s.connect(runtime + "/seridian.sock")
+    s.sendall((line + "\n").encode())
+    s.settimeout(10)
+    reply = s.makefile().readline().strip()
+    s.close()
+    return reply
+for i in range(1, 41):
+    want = 60 + i
+    if send("bpm %d" % want) != "ok":
+        stale += 1
+        continue
+    with open(runtime + "/seridian-state.json") as f:
+        if round(json.load(f)["bpm"]) != want:
+            stale += 1
+    gain = (i % 10) / 10
+    if send("set 3 gain %s" % gain) != "ok":
+        stale += 1
+        continue
+    with open(runtime + "/seridian-state.json") as f:
+        if abs(json.load(f)["tracks"][2]["gain"] - gain) > 0.002:
+            stale += 1
+print(stale)
+PY
+)"
+    [ "$stale" = "0" ] && pass "80 command/state pairs, none stale" || fail "$stale of 80 state reads were stale"
+    "$CLI" bpm 120 >/dev/null; "$CLI" set 3 gain 0.75 >/dev/null
+}
+
+ALL="open_restores_bpm_and_master relative_paths_are_absolute one_command_per_request single_instance instruments_round_trip reverb_from_the_cli transport_replies note_limits_agree file_errors_name_the_cause state_is_fresh_after_a_command"
 SELECTED="${*:-$ALL}"
 for name in $SELECTED; do
     "test_$name"
