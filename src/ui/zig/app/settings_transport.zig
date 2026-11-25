@@ -11,6 +11,7 @@ const ui_math = @import("../ui_math.zig");
 const piano_math = @import("../piano_math.zig");
 const ui_state = @import("../ui_state.zig");
 const window_input = @import("../window_input.zig");
+const scroll_wrap = @import("../scroll_wrap.zig");
 
 const app = &st.app;
 
@@ -618,8 +619,22 @@ pub fn build_session_tab() raven.Rid {
     raven.Rslot_set_fill(foot, 1.0);
     raven.Rslot_set_valign(foot, raven.R_VALIGN_BOTTOM);
     _ = raven.Rwidget_add_child(column, foot);
-    return fns.make_panel(column, 14.0);
+    // Scrollable: at small window sizes the MIDI input rows used to be clipped with no way to reach them (QA U11).
+    return fns.make_panel(scroll_wrap.wrap(RavenScrollApi{}, column), 14.0);
 }
+
+/// Raven calls behind `scroll_wrap.wrap`.
+const RavenScrollApi = struct {
+    pub fn createScrollBox(_: RavenScrollApi) raven.Rid {
+        return raven.Rwidget_create(raven.R_WIDGET_SCROLL_BOX);
+    }
+    pub fn addChild(_: RavenScrollApi, parent: raven.Rid, child: raven.Rid) void {
+        _ = raven.Rwidget_add_child(parent, child);
+    }
+    pub fn setFill(_: RavenScrollApi, widget: raven.Rid, weight: f32) void {
+        raven.Rslot_set_fill(widget, weight);
+    }
+};
 
 pub fn build_clip_tab() raven.Rid {
     const column: raven.Rid = fns.make_column(12.0);

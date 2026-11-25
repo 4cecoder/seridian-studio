@@ -50,6 +50,7 @@ QA reopens an item when the fix does not hold. Developers fix test-first.
 | U8 | open | Save As refuses an existing folder name ("A folder with that name already exists") with no overwrite option, while the socket `save` overwrites any existing folder silently; the two paths disagree | `app/project.zig:~176-190` vs `app/control.zig:~262` |
 | U9 | fixed (guard: keymap.zig test "help: Linux render says Ctrl, never Cmd; macOS says Cmd") | Status message says "Cmd+2" on Linux (the binding is Ctrl+2) | `app/actions_popout.zig:59` |
 | U10 | fixed (guard: single_instance.zig tests "single instance: decide ...", "single instance: probe ..."; e2e `control_regressions.sh single_instance`) | A second `seridian-studio` launch started a second app that fought the first over `seridian.sock`. Now a live owner makes the new process print `Seridian Studio is already running (pid N)` and exit 0 with no window; a stale socket file is removed and start goes on; `--new-instance` skips the check. The running window is not raised: the wm layer has no focus op and the socket has no raise command | `src/main.zig` `claimInstance`, `src/system/single_instance.zig` |
+| U11 | fixed (guard: scroll_wrap.zig test "scroll wrap: content goes inside a scroll box ..."; the visual result is not verified) | At 1440x920 the right-hand Session tab (QUICK START, MIDI INPUT dropdowns) was cut off at the bottom of its panel with no scrollbar. The tab content is now inside a scroll box, like the Track FX tab | `app/settings_transport.zig` `build_session_tab` |
 
 ## Gaps
 

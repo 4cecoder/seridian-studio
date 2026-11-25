@@ -70,3 +70,34 @@ filling the bottom third. The status bar is at the very bottom.
 
 Each item follows the same loop: a failing test first, the smallest fix, an adversarial QA pass that
 tries to break it, and a headed run to look at the real screen.
+
+## Benchmark: a better Ableton
+
+Ableton's strength is a fast, keyboard-driven way of sketching: Session view for trying ideas,
+Arrangement view for finishing, Tab to flip between them, one device chain per track, and
+everything reachable without leaving the keys. Beating it means matching that speed first and then
+doing things it cannot.
+
+Match (needed before anyone will switch):
+
+| Ableton habit | Seridian status | work item |
+|---------------|-----------------|-----------|
+| Session view: a grid of clips per track that launch in time with the beat | no | new view, launch quantize, scene launch |
+| Tab flips Session and Arrangement | no | view switch on the keymap (one table) |
+| Device chain per track, shown beside the track | part | Track FX tab to a chain strip under the track |
+| Clip view with notes, loop braces, per-clip gain and fades | part (Clip tab) | draw the clip view from the piano roll data |
+| Capture MIDI: it records what you just played | no | keep a rolling buffer of live MIDI, one key to commit it |
+| Tap tempo, metronome, count-in, loop | tap only | metronome, count-in, loop region |
+| Drag to arrange, Ctrl+D duplicate, Ctrl+E split | have (D, E) | keep |
+
+Beat it (what Ableton does not do):
+
+| Edge | Why Ableton cannot easily follow |
+|------|----------------------------------|
+| Every action is a command. `seridian` drives the running app, so a session can be built, tweaked and rendered from a script or by an AI, and the screen updates live | Ableton's automation surface is Max for Live and a private API |
+| Instruments are physical models, not sample libraries. Nothing to download, the whole instrument ships in the binary | Ableton's good sounds are paid packs |
+| Open source under Apache-2.0, native Linux | closed, Windows and macOS only |
+| Crash recovery and "unsaved changes" are on by default and tested | present in Ableton; parity, not an edge |
+| One keymap table drives the shortcuts, the help screen and (planned) the command palette, so they cannot disagree | Ableton's help is separate from its bindings |
+
+Next after the layout work: Session view with clip launching, the device chain strip, Capture MIDI.

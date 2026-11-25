@@ -26,4 +26,5 @@ test {
     _ = @import("preflight_report.zig");
     _ = @import("idle_inhibit.zig");
     _ = @import("idle_inhibit_linux.zig");
+    _ = @import("scroll_wrap.zig");
 }
