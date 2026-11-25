@@ -41,6 +41,8 @@ default input through PulseAudio/PipeWire.
 
 ## Documentation
 
+- [docs/CONTROL.md](docs/CONTROL.md): the socket and `seridian` CLI control protocol (every command, the state JSON, limits, worked examples)
+
 ## Project layout
 
 - `src/audio`, `src/dsp`, `src/effects`, `src/instruments`: Zig audio engine

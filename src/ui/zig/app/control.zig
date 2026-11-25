@@ -235,7 +235,7 @@ pub fn control_set(argv: [*c][*c]u8, argc: c_int) [*c]const u8 {
         if (type_ < 0) return unknown_instrument_message();
         if (ext.audio_engine_set_track_instrument(app.engine, track, type_) != 0) return "could not set the instrument";
     } else {
-        return "field must be gain, pan, mute, solo, arm, reverb or instrument";
+        return "field must be gain, pan, mute, solo, arm, reverb, name or instrument";
     }
     fns.mixer_sync_all();
     return null;

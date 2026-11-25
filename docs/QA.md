@@ -9,11 +9,11 @@ QA reopens an item when the fix does not hold. Developers fix test-first.
 | id | status | finding | evidence |
 |----|--------|---------|----------|
 | B1 | fixed | CLI rejected bad arguments with the whole usage line and no hint which argument was wrong | `describeProblem` tests in `src/cli/main.zig` |
-| B2 | open | `seridian set N instrument Nope` lists only 3 of the 20 instruments ("try: Keys, WavetableSynth, SuperSaw") | live probe |
-| B3 | open | CLI accepts `note ... start` up to 1e9 beats, the app rejects above 1e6 and answers with a different message | `note 1 60 1e9 1 90` |
-| B4 | open | `seridian state` right after a command can return the previous value (state file lags): `bpm 74` then `state` showed 74.5 | live probe |
-| B5 | open | Instrument names do not round-trip: set `ModelPiano`, state reports `Model Piano` | state JSON vs `set` |
-| B6 | open | `save` and `export` failures say "could not create the folder" / "could not export the WAV" with no cause (no errno, no path) | probes on `/proc/...` |
+| B2 | fixed | `seridian set N instrument Nope` lists only 3 of the 20 instruments ("try: Keys, WavetableSynth, SuperSaw") | live probe; fixed by `describeProblem lists every valid instrument for an unknown one` (src/cli/main.zig) and e2e `instruments_round_trip` |
+| B3 | fixed | CLI accepts `note ... start` up to 1e9 beats, the app rejects above 1e6 and answers with a different message | `note 1 60 1e9 1 90`; fixed by `note start and length share one limit with the app (B3)` (src/cli/main.zig) and e2e `note_limits_agree`; one constant in src/control_limits.zig |
+| B4 | fixed | `seridian state` right after a command can return the previous value (state file lags): `bpm 74` then `state` showed 74.5 | live probe; fixed by e2e `state_is_fresh_after_a_command`; the app rewrites the state file after each socket command, before the reply |
+| B5 | fixed | Instrument names do not round-trip: set `ModelPiano`, state reports `Model Piano` | state JSON vs `set`; fixed by `C API - instrument names round-trip: what set accepts is what state reports`, `instrument_types: a displayed name matches ignoring case and spaces` and e2e `instruments_round_trip` |
+| B6 | fixed | `save` and `export` failures say "could not create the folder" / "could not export the WAV" with no cause (no errno, no path) | probes on `/proc/...`; fixed by `a failed save or open leaves its cause for the control socket`, `a failed export leaves its cause for the control socket`, `describe: common causes in plain words` and e2e `file_errors_name_the_cause` |
 | B7 | open | Both the running app (Nov 16 build) and the new build report `seridian 0.1.0`; nothing identifies the build | `seridian version` |
 | B8 | open | `/usr/local/bin/seridian-studio-headless` is a stale copy of the Nov 16 GUI binary | `cmp` |
 | B9 | fixed | DATA LOSS: `save` silently skips any track whose serialized MIDI exceeds the 32 KB buffer (about 1700 notes); the reply is `ok`, no `midi_trackN.bin` is written, and `open` brings the track back empty. A stale file from an earlier save is not removed either (the `size <= 0` path just `continue`s). Load has the same 32 KB cap | `persistence.zig:130,153-154,303`. Repro: add 1800 notes to track 8 with `note 8 ...`, `save D`, `ls D` has no `midi_track7.bin` (twice) Guarded by test `save keeps a track whose MIDI exceeds 32 KB and reports a track that cannot be written`. |
@@ -35,6 +35,7 @@ QA reopens an item when the fix does not hold. Developers fix test-first.
 | B25 | open | CONFUSING: a path with a space, or a path over the line budget, is answered `error: invalid arguments / usage: seridian save PATH` with no reason. B15 made it worse: `cd "/tmp/my dir"; seridian save rel` fails the same way although the user typed no space | `seridian save 'sp ace'`; `cd "/tmp/my dir" && seridian save rel` (twice) |
 | B26 | open | WRONG RESULT: the B15 absolute-path step resolves `..` lexically, so `lnk/../out` with `lnk` a symlink to `/else/deep` lands in `cwd/out`, where `mkdir lnk/../out` creates `/else/out` | `ln -s /tmp/else/deep /tmp/w/lnk; cd /tmp/w; seridian save lnk/../out; ls -d /tmp/w/out /tmp/else/out` (twice) |
 | B27 | open | CONFUSING: after B16 a request with a trailing blank line (`bpm 100\n\n` or `\r\n\r\n`) is refused with `send one command per request` and does not run, although it holds one command | `python3 -c` unix-socket send of `bpm 100\n\n` to `$XDG_RUNTIME_DIR/seridian.sock` (twice) |
+| B28 | open | CONFUSING: the socket drops a client after 90 poll frames without a complete line; the window polls at 30 Hz (about 3 s) but the headless build spins, so a client that waits more than about 10 ms between `connect` and the first byte gets a closed connection and no reply | python unix socket: connect, sleep 0.02, send `bpm 120\n` against `seridian-studio-headless` (0 of 5 answered) |
 
 ## UI/UX bugs
 
@@ -56,11 +57,11 @@ QA reopens an item when the fix does not hold. Developers fix test-first.
 
 | id | status | finding |
 |----|--------|---------|
-| G1 | open | No CLI way to add or configure an effect, so `auto <track> wet` fails on every track until someone adds a reverb in the UI |
-| G2 | open | The CLI is capped at 8 tracks and cannot add, delete, rename or colour a track |
-| G3 | open | `play` and `stop` answer `ok` whether or not anything changed; no transport state in the reply |
+| G1 | `fixed` (guards: `AudioEngine - a track reverb can be added, set and removed from control code`, `C API - track reverb on, wet and off`, `set reverb: on, off and wet`, `format reports per track whether a reverb is present and its wet value`, e2e `reverb_from_the_cli`) | No CLI way to add or configure an effect, so `auto <track> wet` fails on every track until someone adds a reverb in the UI |
+| G2 | `partial` (rename done: `set name: one to 24 printable characters`, `track names`, e2e `track_names`; add, delete and colour still open) | The CLI is capped at 8 tracks and cannot add, delete, rename or colour a track |
+| G3 | `fixed` (guard: e2e `transport_replies`) | `play` and `stop` answer `ok` whether or not anything changed; no transport state in the reply |
 | G4 | open | `clear` has no undo and no confirmation over the socket |
-| G5 | open | No `seridian instruments` listing; names are discoverable only by failing |
+| G5 | `fixed` (guards: `instruments command lists every instrument name, one per line`, e2e `instruments_round_trip`) | No `seridian instruments` listing; names are discoverable only by failing |
 | G6 | open | Window and panel maximize / fullscreen are not first-class (see F1) |
 
 ## Features wanted
