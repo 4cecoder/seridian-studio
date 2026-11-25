@@ -10,6 +10,7 @@ const palette = @import("../palette.zig");
 const ui_math = @import("../ui_math.zig");
 const piano_math = @import("../piano_math.zig");
 const ui_state = @import("../ui_state.zig");
+const dirty_mod = @import("../dirty.zig");
 const window_input = @import("../window_input.zig");
 
 const app = &st.app;
@@ -144,17 +145,50 @@ pub fn modal_dialog_open() c_int {
     return @intFromBool(app.modal_depth > 0 or raven.Rwindow_has_dialog(app.window) != 0);
 }
 
+/// True when the session has unsaved changes: re-reads the session signature first, so every edit that feeds the
+/// autosave signature (MIDI notes, mixer values, clips, instruments, tempo) counts.
+pub fn session_is_dirty() bool {
+    _ = st.dirty.observe(session_signature());
+    return dirty_mod.needsPrompt(&st.dirty);
+}
+
+/// Asks "Save changes?" when the session is dirty (Yes saves, No discards, Cancel stops). Returns true when the
+/// caller (close, New, Open) may go on. A Save that did not finish, such as a cancelled Save As, stops it too.
+pub fn confirm_discard_unsaved(what: [*c]const u8) bool {
+    if (!session_is_dirty()) return true;
+    var text: [160]u8 = undefined;
+    _ = libc.snprintf(&text, text.len, "%s: Yes saves your changes first, No discards them, Cancel keeps the session open.", what);
+    app.modal_depth += 1;
+    const result: c_int = @bitCast(raven.Rmessage_box(app.window, "Save changes?", &text, raven.R_MESSAGE_YES_NO_CANCEL));
+    app.modal_depth -= 1;
+    const answer: dirty_mod.Answer = switch (result) {
+        raven.R_MESSAGE_RESULT_YES => .yes,
+        raven.R_MESSAGE_RESULT_NO => .no,
+        else => .cancel,
+    };
+    switch (dirty_mod.decide(answer)) {
+        .proceed => return true,
+        .cancel => return false,
+        .save => {
+            save_session(0);
+            _ = st.dirty.observe(session_signature());
+            switch (dirty_mod.afterSave(&st.dirty)) {
+                .proceed => return true,
+                else => {
+                    fns.set_status("Not saved yet: finish saving, then try again");
+                    return false;
+                },
+            }
+        },
+    }
+}
+
 pub fn on_new_project(button: raven.Rid, user_data: ?*anyopaque) callconv(.c) void {
     _ = button;
     _ = user_data;
-    if (fns.session_has_content() != 0) {
-        app.modal_depth += 1;
-        const answer: c_int = @bitCast(raven.Rmessage_box(app.window, "Create a new session?", "This clears the current session from the mixer. Save first if you want to keep it.", raven.R_MESSAGE_YES_NO));
-        app.modal_depth -= 1;
-        if (answer != raven.R_MESSAGE_RESULT_YES) {
-            fns.set_status("New session cancelled");
-            return;
-        }
+    if (!confirm_discard_unsaved("New session")) {
+        fns.set_status("New session cancelled");
+        return;
     }
     ext.audio_engine_stop(app.engine);
     ext.audio_engine_set_position(app.engine, 0);
@@ -503,6 +537,7 @@ pub fn monotonic_seconds() f64 {
 /// The session was just saved, opened or cleared: nothing is unsaved, so the recovery copy is stale.
 pub fn autosave_reset_baseline() void {
     st.autosave_baseline = session_signature();
+    st.dirty.clear_on_save(st.autosave_baseline);
     st.autosave_next_time = monotonic_seconds() + st.AUTOSAVE_INTERVAL_SECONDS;
     _ = ext.recovery_discard();
 }
@@ -513,6 +548,7 @@ pub fn autosave_tick() void {
     st.autosave_next_time = now + st.AUTOSAVE_INTERVAL_SECONDS;
     if (modal_dialog_open() != 0) return;
     const signature = session_signature();
+    _ = st.dirty.observe(signature);
     if (signature == st.autosave_baseline) return;
     const path = ext.recovery_session_path();
     if (path == null) return;
@@ -557,6 +593,7 @@ pub fn offer_recovery() void {
     ext.audio_engine_stop(app.engine);
     if (path != null and ext.project_load_unsaved(path) == 0) {
         refresh_after_load();
+        st.dirty.mark(); // restored work was never saved
         fns.set_status("Restored unsaved work. Use Save to keep it");
     } else {
         fns.set_status("Could not restore the recovery copy");
@@ -574,14 +611,9 @@ pub fn on_open_project(button: raven.Rid, user_data: ?*anyopaque) callconv(.c) v
     const folder = raven.Rfile_dialog_select_folder(&dialog);
     app.modal_depth -= 1;
     if (folder != null and folder[0] != 0) {
-        if (fns.session_has_content() != 0) {
-            app.modal_depth += 1;
-            const answer: c_int = @bitCast(raven.Rmessage_box(app.window, "Open this session?", "Opening a session replaces the current mixer contents. Save first if you want to keep them.", raven.R_MESSAGE_YES_NO));
-            app.modal_depth -= 1;
-            if (answer != raven.R_MESSAGE_RESULT_YES) {
-                fns.set_status("Open cancelled");
-                return;
-            }
+        if (!confirm_discard_unsaved("Open")) {
+            fns.set_status("Open cancelled");
+            return;
         }
         if (open_session_folder(folder) == 0) {
             fns.set_status("Session opened");
@@ -596,6 +628,8 @@ pub fn on_open_project(button: raven.Rid, user_data: ?*anyopaque) callconv(.c) v
 pub fn on_window_close(window: raven.Rid, user_data: ?*anyopaque) callconv(.c) c_int {
     _ = window;
     _ = user_data;
+    // Cancel (or an unfinished Save) keeps the window open and leaves the recovery copy as it is.
+    if (!confirm_discard_unsaved("Close")) return raven.R_FALSE;
     ext.audio_engine_stop(app.engine);
     fns.piano_undo_reset();
     _ = ext.recovery_mark_clean();

@@ -8,6 +8,7 @@
 const std = @import("std");
 const raven = @import("raven");
 const palette = @import("../palette.zig");
+const dirty_mod = @import("../dirty.zig");
 
 const Rid = raven.Rid;
 
@@ -331,6 +332,8 @@ pub var save_prompt: SavePrompt = std.mem.zeroes(SavePrompt);
 
 pub const AUTOSAVE_INTERVAL_SECONDS: f64 = 120.0;
 pub var autosave_baseline: u64 = 0;
+/// Unsaved-changes state, fed by the session signature (dirty.zig).
+pub var dirty: dirty_mod.Dirty = .{};
 pub var autosave_next_time: f64 = 0;
 
 // ---- Audio settings dialog ----

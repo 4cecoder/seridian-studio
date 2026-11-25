@@ -537,6 +537,7 @@ pub export fn seridian_raven_run(engine: ?*anyopaque) callconv(.c) c_int {
 
     fns.offer_recovery();
     st.autosave_baseline = fns.session_signature();
+    st.dirty.rebase(st.autosave_baseline);
     st.autosave_next_time = fns.monotonic_seconds() + st.AUTOSAVE_INTERVAL_SECONDS;
     control_open();
     // System check (not in the C): runs on a worker thread; preflight_poll shows the result.

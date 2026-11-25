@@ -16,6 +16,7 @@ test {
     _ = input_dispatch;
     _ = ui_state;
     _ = @import("keymap.zig");
+    _ = @import("dirty.zig");
     _ = @import("piano_edit.zig");
     _ = @import("fader_math.zig");
     _ = @import("meter_math.zig");
