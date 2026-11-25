@@ -798,12 +798,14 @@ fn socketPath(allocator: std.mem.Allocator, env: *const Env) ![]u8 {
 const ArgError = error{InvalidArgs};
 
 fn parseIntIn(text: []const u8, min: i64, max: i64) ArgError!i64 {
+    if (!control_limits.isPlainInteger(text)) return error.InvalidArgs;
     const value = std.fmt.parseInt(i64, text, 10) catch return error.InvalidArgs;
     if (value < min or value > max) return error.InvalidArgs;
     return value;
 }
 
 fn parseFloatIn(text: []const u8, min: f64, max: f64) ArgError!f64 {
+    if (!control_limits.isPlainDecimal(text)) return error.InvalidArgs;
     const value = std.fmt.parseFloat(f64, text) catch return error.InvalidArgs;
     if (!std.math.isFinite(value) or value < min or value > max) return error.InvalidArgs;
     return value;
@@ -1776,4 +1778,42 @@ test "auto beat limit and message are the app's (B29)" {
     try expectProblem("value must be a number 0..1, got '2'", "auto", &.{ "master", "gain", "0", "2" });
     try expectProblem("auto master takes: gain <beat> <value>", "auto", &.{ "master", "pan", "0", "0" });
     try expectProblem("lane must be gain, pan or wet, got 'mute'", "auto", &.{ "clear", "1", "mute" });
+}
+
+test "numbers must be plain decimals: no hex, underscores, plus signs or bare dots (B34)" {
+    try expectRejected("set", &.{ "1", "reverb", "wet", "0x1" });
+    try expectRejected("set", &.{ "1", "reverb", "wet", "0x0.8p0" });
+    try expectRejected("set", &.{ "1", "gain", "0x1" });
+    try expectRejected("set", &.{ "1", "gain", "+1" });
+    try expectRejected("set", &.{ "1", "pan", "0_5" });
+    try expectRejected("set", &.{ "1", "pan", ".5" });
+    try expectRejected("set", &.{ "+1", "gain", "1" });
+    try expectRejected("set", &.{ "0x1", "gain", "1" });
+    try expectRejected("bpm", &.{"+120"});
+    try expectRejected("bpm", &.{"1_20"});
+    try expectRejected("bpm", &.{"0x78"});
+    try expectRejected("note", &.{ "1", "+60", "0", "1" });
+    try expectRejected("note", &.{ "1", "6_0", "0", "1" });
+    try expectRejected("note", &.{ "1", "60", "0x1", "1" });
+    try expectRejected("note", &.{ "1", "60", "0", "1", "0x64" });
+    try expectRejected("auto", &.{ "1", "gain", "0x1", "0.5" });
+    try expectRejected("auto", &.{ "1", "gain", "0", "0x1" });
+    try expectRejected("auto", &.{ "master", "gain", "1_0", "0.5" });
+    try expectRejected("clear", &.{"+1"});
+    // Plain decimals still work, including a leading minus and an exponent.
+    try expectLine("set 1 pan -0.5", "set", &.{ "1", "pan", "-0.5" });
+    try expectLine("set 1 reverb wet 0.5", "set", &.{ "1", "reverb", "wet", "0.5" });
+    try expectLine("bpm 100", "bpm", &.{"1e2"});
+    try std.testing.expect(control_limits.isPlainDecimal("0"));
+    try std.testing.expect(control_limits.isPlainDecimal("-12.50"));
+    try std.testing.expect(control_limits.isPlainDecimal("5e-1"));
+    try std.testing.expect(!control_limits.isPlainDecimal(""));
+    try std.testing.expect(!control_limits.isPlainDecimal("-"));
+    try std.testing.expect(!control_limits.isPlainDecimal("1."));
+    try std.testing.expect(!control_limits.isPlainDecimal("1e"));
+    try std.testing.expect(!control_limits.isPlainDecimal("nan"));
+    try std.testing.expect(!control_limits.isPlainDecimal("0x1"));
+    try std.testing.expect(control_limits.isPlainInteger("-3"));
+    try std.testing.expect(!control_limits.isPlainInteger("3.0"));
+    try std.testing.expect(!control_limits.isPlainInteger("+3"));
 }

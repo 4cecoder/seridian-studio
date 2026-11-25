@@ -7,6 +7,38 @@ const track_name = @import("utils/track_name.zig");
 /// Largest note start, note length and automation beat, in beats.
 pub const max_beats: f64 = 1_000_000;
 
+/// True for a plain decimal integer: optional minus, then digits. No plus sign, underscores, hex or spaces.
+pub fn isPlainInteger(text: []const u8) bool {
+    const digits = if (text.len > 0 and text[0] == '-') text[1..] else text;
+    if (digits.len == 0) return false;
+    for (digits) |c| if (c < '0' or c > '9') return false;
+    return true;
+}
+
+/// True for a plain decimal number: optional minus, digits, optional `.digits`, optional exponent
+/// (`e` or `E`, optional sign, digits). No plus sign, underscores, hex, inf, nan or bare dots.
+pub fn isPlainDecimal(text: []const u8) bool {
+    var i: usize = 0;
+    if (i < text.len and text[i] == '-') i += 1;
+    const int_start = i;
+    while (i < text.len and text[i] >= '0' and text[i] <= '9') i += 1;
+    if (i == int_start) return false;
+    if (i < text.len and text[i] == '.') {
+        i += 1;
+        const frac_start = i;
+        while (i < text.len and text[i] >= '0' and text[i] <= '9') i += 1;
+        if (i == frac_start) return false;
+    }
+    if (i < text.len and (text[i] == 'e' or text[i] == 'E')) {
+        i += 1;
+        if (i < text.len and (text[i] == '-' or text[i] == '+')) i += 1;
+        const exp_start = i;
+        while (i < text.len and text[i] >= '0' and text[i] <= '9') i += 1;
+        if (i == exp_start) return false;
+    }
+    return i == text.len;
+}
+
 /// Message for an automation beat outside 0..max_beats.
 pub const beat_message = std.fmt.comptimePrint("beat must be a number of beats 0..{d}", .{@as(u32, max_beats)});
 

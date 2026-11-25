@@ -6,7 +6,7 @@
 # kills only the pid it started.
 #
 # Usage: tests/e2e/control_regressions.sh [test-name ...]
-#   tests: open_restores_bpm_and_master, relative_paths_are_absolute, one_command_per_request, single_instance, instruments_round_trip, reverb_from_the_cli, transport_replies, note_limits_agree, file_errors_name_the_cause, state_is_fresh_after_a_command, track_names, effects_survive_save_and_open, open_validates_track_names, auto_beat_limit
+#   tests: open_restores_bpm_and_master, relative_paths_are_absolute, one_command_per_request, single_instance, instruments_round_trip, reverb_from_the_cli, transport_replies, note_limits_agree, file_errors_name_the_cause, state_is_fresh_after_a_command, track_names, effects_survive_save_and_open, open_validates_track_names, auto_beat_limit, plain_decimals_only
 # Requires: zig-out/bin/seridian and zig-out/bin/seridian-studio-headless
 #   (zig build -Dheadless=true), jq, python3. Exit code 0 when all selected tests pass.
 
@@ -417,7 +417,26 @@ test_auto_beat_limit() {
     "$CLI" auto clear 1 gain >/dev/null
 }
 
-ALL="open_restores_bpm_and_master relative_paths_are_absolute one_command_per_request single_instance instruments_round_trip reverb_from_the_cli transport_replies note_limits_agree file_errors_name_the_cause state_is_fresh_after_a_command track_names effects_survive_save_and_open open_validates_track_names auto_beat_limit"
+test_plain_decimals_only() {
+    echo "== numbers are plain decimals on both sides: no hex, underscores or plus signs (B34)"
+    local line reply out
+    for line in 'set 1 reverb wet 0x1' 'set 1 reverb wet 0x0.8p0' 'set 1 gain 0x1' 'set 1 gain +1' 'set 1 pan 0_5' 'set +1 gain 1' 'bpm 0x78' 'bpm +120' 'bpm 1_20' \
+        'note 1 +60 0 1' 'note 1 60 0x1 1' 'note 1 60 0 1 0x64' 'auto 1 gain 0x1 0.5' 'auto 1 gain 0 0x1' 'clear +1'; do
+        reply="$(raw_send "$line\\n")"
+        case "$reply" in error:*) pass "app refuses '$line'" ;; *) fail "app refuses '$line' (got '$reply')" ;; esac
+    done
+    "$CLI" set 1 reverb on >/dev/null
+    for line in 'set 1 reverb wet 0x1' 'bpm 0x78'; do
+        # shellcheck disable=SC2086
+        out="$("$CLI" $line 2>&1 | head -1)"
+        case "$out" in error:*) pass "CLI refuses '$line'" ;; *) fail "CLI refuses '$line' (got '$out')" ;; esac
+    done
+    [ "$(state_field '.tracks[0].reverb.wet')" != "1.000" ] && pass "no hex value reached the reverb" || fail "a hex value reached the reverb"
+    [ "$(raw_send 'set 1 reverb wet 0.5\n')" = "ok" ] && pass "0.5 is accepted" || fail "0.5 is accepted"
+    "$CLI" set 1 reverb off >/dev/null
+}
+
+ALL="open_restores_bpm_and_master relative_paths_are_absolute one_command_per_request single_instance instruments_round_trip reverb_from_the_cli transport_replies note_limits_agree file_errors_name_the_cause state_is_fresh_after_a_command track_names effects_survive_save_and_open open_validates_track_names auto_beat_limit plain_decimals_only"
 SELECTED="${*:-$ALL}"
 for name in $SELECTED; do
     "test_$name"

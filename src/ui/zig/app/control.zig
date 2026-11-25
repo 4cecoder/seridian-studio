@@ -66,6 +66,7 @@ pub fn control_close() void {
 
 pub fn control_parse_int(text: [*c]const u8, low: c_long, high: c_long, out: [*c]c_long) c_int {
     if (text == null or text[0] == 0) return 0;
+    if (!control_limits.isPlainInteger(std.mem.span(@as([*:0]const u8, @ptrCast(text))))) return 0;
     var end: [*c]u8 = null;
     libc.set_errno(0);
     const value = libc.strtol(text, &end, 10);
@@ -76,6 +77,7 @@ pub fn control_parse_int(text: [*c]const u8, low: c_long, high: c_long, out: [*c
 
 pub fn control_parse_double(text: [*c]const u8, low: f64, high: f64, out: [*c]f64) c_int {
     if (text == null or text[0] == 0) return 0;
+    if (!control_limits.isPlainDecimal(std.mem.span(@as([*:0]const u8, @ptrCast(text))))) return 0;
     var end: [*c]u8 = null;
     libc.set_errno(0);
     const value = libc.strtod(text, &end);
