@@ -691,7 +691,23 @@ fn usageFor(name: []const u8) []const u8 {
 
 /// Validates the arguments, connects to the app's socket, sends one line and
 /// prints the one-line reply. "ok" exits 0; anything else is an error, exit 1.
-fn sendCommand(allocator: std.mem.Allocator, io: std.Io, env: *const Env, name: []const u8, args: []const []const u8) !u8 {
+fn sendCommand(allocator: std.mem.Allocator, io: std.Io, env: *const Env, name: []const u8, requested_args: []const []const u8) !u8 {
+    // The app resolves a relative path against its own working directory, so the CLI sends an absolute one.
+    var absolute_path: ?[]u8 = null;
+    defer if (absolute_path) |p| allocator.free(p);
+    var path_args: [1][]const u8 = undefined;
+    var args = requested_args;
+    if (takesPath(name) and requested_args.len == 1 and requested_args[0].len > 0 and !std.fs.path.isAbsolute(requested_args[0])) {
+        const cwd = std.process.currentPathAlloc(io, allocator) catch |err| {
+            try printErr(io, "cannot find the current directory: {s}\n", .{@errorName(err)});
+            return 1;
+        };
+        defer allocator.free(cwd);
+        absolute_path = try absolutePath(allocator, cwd, requested_args[0]);
+        path_args[0] = absolute_path.?;
+        args = &path_args;
+    }
+
     var line_buf: [256]u8 = undefined;
     const line = buildLine(&line_buf, name, args) catch {
         var problem_buf: [200]u8 = undefined;
@@ -781,6 +797,18 @@ fn parseOnOff(text: []const u8) ArgError!bool {
 
 fn isAutoLane(text: []const u8) bool {
     return std.mem.eql(u8, text, "gain") or std.mem.eql(u8, text, "pan") or std.mem.eql(u8, text, "wet");
+}
+
+/// True for the commands whose single argument is a file or folder path.
+fn takesPath(name: []const u8) bool {
+    return std.mem.eql(u8, name, "save") or std.mem.eql(u8, name, "open") or std.mem.eql(u8, name, "export");
+}
+
+/// Makes `path` absolute against `cwd` (the CLI's own working directory) and normalizes it.
+/// An already absolute path is returned as a copy. The caller frees the result.
+fn absolutePath(allocator: std.mem.Allocator, cwd: []const u8, path: []const u8) std.mem.Allocator.Error![]u8 {
+    if (std.fs.path.isAbsolute(path)) return allocator.dupe(u8, path);
+    return std.fs.path.resolve(allocator, &.{ cwd, path });
 }
 
 /// Checks the arguments of one command and renders the line sent to the app.
@@ -1498,6 +1526,24 @@ test "app commands reject bad counts and ranges" {
     var long_path: [max_path_bytes + 1]u8 = undefined;
     @memset(&long_path, 'x');
     try expectRejected("export", &.{long_path[0..]});
+}
+
+test "relative save, open and export paths become absolute against the CLI's directory" {
+    const allocator = std.testing.allocator;
+    const cases = [_]struct { path: []const u8, want: []const u8 }{
+        .{ .path = "rel", .want = "/work/dir/rel" },
+        .{ .path = "a/b.wav", .want = "/work/dir/a/b.wav" },
+        .{ .path = "./x", .want = "/work/dir/x" },
+        .{ .path = "../up", .want = "/work/up" },
+        .{ .path = "/abs/path", .want = "/abs/path" },
+    };
+    for (cases) |case| {
+        const got = try absolutePath(allocator, "/work/dir", case.path);
+        defer allocator.free(got);
+        try std.testing.expectEqualStrings(case.want, got);
+    }
+    try std.testing.expect(takesPath("save") and takesPath("open") and takesPath("export"));
+    try std.testing.expect(!takesPath("bpm"));
 }
 
 test "socket path uses XDG_RUNTIME_DIR" {
