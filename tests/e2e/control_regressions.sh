@@ -6,7 +6,7 @@
 # kills only the pid it started.
 #
 # Usage: tests/e2e/control_regressions.sh [test-name ...]
-#   tests: open_restores_bpm_and_master, relative_paths_are_absolute, one_command_per_request, single_instance, instruments_round_trip, reverb_from_the_cli, transport_replies, note_limits_agree, file_errors_name_the_cause, state_is_fresh_after_a_command, track_names, effects_survive_save_and_open
+#   tests: open_restores_bpm_and_master, relative_paths_are_absolute, one_command_per_request, single_instance, instruments_round_trip, reverb_from_the_cli, transport_replies, note_limits_agree, file_errors_name_the_cause, state_is_fresh_after_a_command, track_names, effects_survive_save_and_open, open_validates_track_names
 # Requires: zig-out/bin/seridian and zig-out/bin/seridian-studio-headless
 #   (zig build -Dheadless=true), jq, python3. Exit code 0 when all selected tests pass.
 
@@ -377,7 +377,30 @@ test_effects_survive_save_and_open() {
     "$CLI" set 1 reverb off >/dev/null; "$CLI" auto clear 1 gain >/dev/null; "$CLI" auto clear 1 wet >/dev/null
 }
 
-ALL="open_restores_bpm_and_master relative_paths_are_absolute one_command_per_request single_instance instruments_round_trip reverb_from_the_cli transport_replies note_limits_agree file_errors_name_the_cause state_is_fresh_after_a_command track_names effects_survive_save_and_open"
+test_open_validates_track_names() {
+    echo "== open falls back to the default name for a bad track name, state stays valid JSON (B32)"
+    local dir="$WORK/badnames" names
+    "$CLI" save "$dir" >/dev/null || { fail "save"; return; }
+    python3 -I - "$dir/project.daw" <<'PY'
+import re, sys
+path = sys.argv[1]
+data = open(path, "rb").read()
+bad = {1: b"a\xe9\x01b", 2: b"x" * 100, 3: b"caf\xc3\xa9", 4: b"Fine Name"}
+for index, name in bad.items():
+    data = re.sub(rb"(\[Track%d\]\nname = )[^\n]*" % index, lambda m: m.group(1) + name, data, count=1)
+open(path, "wb").write(data)
+PY
+    "$CLI" open "$dir" >/dev/null || { fail "open"; return; }
+    names="$(python3 -I - "$RUNTIME/seridian-state.json" <<'PY'
+import json, sys
+state = json.loads(open(sys.argv[1], "rb").read().decode("utf-8", errors="strict"))
+print(",".join(t["name"] for t in state["tracks"][1:5]))
+PY
+)"
+    [ "$names" = "Track 2,Track 3,Track 4,Fine Name" ] && pass "bad names fall back, good name kept: $names" || fail "names after open (got '$names')"
+}
+
+ALL="open_restores_bpm_and_master relative_paths_are_absolute one_command_per_request single_instance instruments_round_trip reverb_from_the_cli transport_replies note_limits_agree file_errors_name_the_cause state_is_fresh_after_a_command track_names effects_survive_save_and_open open_validates_track_names"
 SELECTED="${*:-$ALL}"
 for name in $SELECTED; do
     "test_$name"

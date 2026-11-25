@@ -2,6 +2,7 @@
 //! sides check the same range and give the same message. Imports nothing but `std`.
 
 const std = @import("std");
+const track_name = @import("utils/track_name.zig");
 
 /// Largest note start, note length and automation beat, in beats.
 pub const max_beats: f64 = 1_000_000;
@@ -13,7 +14,7 @@ pub const start_message = std.fmt.comptimePrint("start must be a number of beats
 pub const length_message = std.fmt.comptimePrint("length must be a number of beats above 0 and up to {d}", .{@as(u32, max_beats)});
 
 /// Longest track name, in bytes (printable ASCII, so also in characters).
-pub const max_track_name: usize = 24;
+pub const max_track_name: usize = track_name.max_len;
 
 /// Most words a track name may have on the wire (a command line holds 8 words; `set N name` uses 3).
 pub const max_track_name_words: usize = 5;
@@ -24,11 +25,10 @@ pub const name_message = std.fmt.comptimePrint("name must be 1 to {d} printable 
 /// True when `text` is a usable track name: 1 to `max_track_name` bytes, each printable ASCII (0x20..0x7e),
 /// not starting or ending with a space, with no run of spaces. The wire form joins words with one space.
 pub fn isValidTrackName(text: []const u8) bool {
-    if (text.len == 0 or text.len > max_track_name) return false;
+    if (!track_name.isPrintable(text)) return false;
     if (text[0] == ' ' or text[text.len - 1] == ' ') return false;
     var words: usize = 1;
     for (text, 0..) |c, i| {
-        if (c < 0x20 or c > 0x7e) return false;
         if (c == ' ') {
             if (text[i - 1] == ' ') return false;
             words += 1;

@@ -10,6 +10,7 @@
 
 const std = @import("std");
 const sys = @import("../utils/sys.zig");
+const track_name = @import("../utils/track_name.zig");
 const project_mod = @import("project.zig");
 const Project = project_mod.Project;
 const ProjectHeader = project_mod.ProjectHeader;
@@ -483,7 +484,12 @@ fn parseKeyValue(project: *Project, section: []const u8, key: []const u8, value:
 
         const track = &project.tracks[track_idx];
         if (std.mem.eql(u8, key, "name")) {
-            track.setName(value);
+            if (track_name.isPrintable(value)) {
+                track.setName(value);
+            } else {
+                log.warn("Track {d} has an invalid name in the project file; using the default", .{track_idx});
+                track.setName(project_mod.TrackState.default(track_idx).getName());
+            }
         } else if (std.mem.eql(u8, key, "volume")) {
             track.volume = try std.fmt.parseFloat(f32, value);
         } else if (std.mem.eql(u8, key, "pan")) {
@@ -790,4 +796,18 @@ test "save keeps a track whose MIDI exceeds 32 KB and reports a track that canno
     try sys.makePath(blocked ++ "/midi_track7.bin");
     defer std.Io.Dir.cwd().deleteTree(sys.io(), blocked) catch {};
     try testing.expect(std.meta.isError(saveProject(allocator, &project, blocked)));
+}
+
+test "a track name read from project.daw follows the rules of set N name (B32)" {
+    const testing = std.testing;
+    const ini = "[Track0]\nname = Good Name\n[Track1]\nname = a\xe9\x01b\n[Track2]\nname = xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n[Track3]\nname = caf\xc3\xa9\n[Track4]\nname = tab\there\n[Track5]\nname = a\x7fb\n[Track6]\nname = yyyyyyyyyyyyyyyyyyyyyyyy\n";
+    var project = Project.init();
+    try parseProjectIni(&project, ini);
+    try testing.expectEqualStrings("Good Name", project.tracks[0].getName());
+    try testing.expectEqualStrings("Track 2", project.tracks[1].getName());
+    try testing.expectEqualStrings("Track 3", project.tracks[2].getName());
+    try testing.expectEqualStrings("Track 4", project.tracks[3].getName());
+    try testing.expectEqualStrings("Track 5", project.tracks[4].getName());
+    try testing.expectEqualStrings("Track 6", project.tracks[5].getName());
+    try testing.expectEqualStrings("yyyyyyyyyyyyyyyyyyyyyyyy", project.tracks[6].getName());
 }
