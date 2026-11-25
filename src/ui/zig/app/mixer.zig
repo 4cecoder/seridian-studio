@@ -838,11 +838,10 @@ pub fn mixer_popout_restore() void {
 
 pub fn build_status_bar() raven.Rid {
     const row = fns.make_row(8.0);
-    app.status_label = fns.make_label(
-        "Space play · Enter stop · S split · = / - zoom · Ctrl+N / O / S new, open, save · Ctrl+Shift+E export WAV",
-        12.0,
-        &st.muted_text,
-    );
+    var hint: [256]u8 = undefined;
+    // Rendered from the keymap table, so it cannot drift from the real bindings.
+    if (ext.seridian_keymap_hint(&hint, hint.len) < 0) hint[0] = 0;
+    app.status_label = fns.make_label(&hint, 12.0, &st.muted_text);
     raven.Rslot_set_fill(app.status_label, 1.0);
     _ = raven.Rwidget_add_child(row, app.status_label);
     const brand = fns.make_label("SERIDIAN.DEV", 12.0, &st.accent_cyan);

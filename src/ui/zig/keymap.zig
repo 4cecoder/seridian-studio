@@ -44,6 +44,7 @@ pub const Action = enum {
     zoom_out,
     popout_piano_roll,
     popout_mixer,
+    file_export_wav,
 };
 
 pub const Binding = struct {
@@ -76,6 +77,7 @@ pub const bindings = [_]Binding{
     .{ .key = key_0 + 2, .cmd = true, .shift = false, .action = .view_piano_roll },
     .{ .key = key_equal, .cmd = true, .shift = false, .action = .zoom_in },
     .{ .key = key_minus, .cmd = true, .shift = false, .action = .zoom_out },
+    .{ .key = 'E', .cmd = true, .shift = true, .action = .file_export_wav },
     .{ .key = 'P', .cmd = true, .shift = true, .action = .popout_piano_roll },
     .{ .key = 'M', .cmd = true, .shift = true, .action = .popout_mixer },
     // Plain keys kept from the original transport and timeline shortcuts.
@@ -96,10 +98,192 @@ pub fn lookup(key: i32, modifiers: u32) Action {
     return .none;
 }
 
+// ---- help text rendered from the table ----
+
+/// Which modifier name the help shows for the `cmd` flag.
+pub const Platform = enum { linux_windows, macos };
+
+/// Platform of this build.
+pub const native_platform: Platform = if (@import("builtin").os.tag == .macos) .macos else .linux_windows;
+
+/// Buffer size that holds the full help text with room to spare.
+pub const help_capacity = 2048;
+/// Buffer size for the one-line status-bar hint.
+pub const hint_capacity = 256;
+
+pub const RenderError = error{NoSpaceLeft};
+
+/// "Cmd" on macOS, "Ctrl" elsewhere.
+pub fn cmdName(platform: Platform) []const u8 {
+    return switch (platform) {
+        .linux_windows => "Ctrl",
+        .macos => "Cmd",
+    };
+}
+
+const Group = enum { transport, edit, file, view };
+
+const group_titles = [_][]const u8{ "TRANSPORT", "EDIT", "FILE", "VIEW" };
+
+fn groupOf(action: Action) ?Group {
+    return switch (action) {
+        .none => null,
+        .play_stop, .stop_and_rewind => .transport,
+        .undo, .redo, .select_all, .copy, .cut, .paste, .duplicate, .delete, .split_at_playhead => .edit,
+        .file_new, .file_open, .file_save, .file_save_as, .file_export_wav => .file,
+        .view_arrangement, .view_piano_roll, .zoom_in, .zoom_out, .popout_piano_roll, .popout_mixer => .view,
+    };
+}
+
+/// Short human label of an action, as shown in the help.
+pub fn actionLabel(action: Action) []const u8 {
+    return switch (action) {
+        .none => "",
+        .play_stop => "Play / pause",
+        .stop_and_rewind => "Stop",
+        .undo => "Undo",
+        .redo => "Redo",
+        .select_all => "Select all",
+        .copy => "Copy",
+        .cut => "Cut",
+        .paste => "Paste",
+        .duplicate => "Duplicate",
+        .delete => "Delete",
+        .split_at_playhead => "Split at playhead",
+        .file_new => "New project",
+        .file_open => "Open project",
+        .file_save => "Save",
+        .file_save_as => "Save As",
+        .file_export_wav => "Export WAV",
+        .view_arrangement => "Arrangement tab",
+        .view_piano_roll => "Piano Roll tab",
+        .zoom_in => "Zoom in",
+        .zoom_out => "Zoom out",
+        .popout_piano_roll => "Pop out Piano Roll",
+        .popout_mixer => "Pop out Mixer",
+    };
+}
+
+const Writer = struct {
+    buf: []u8,
+    len: usize = 0,
+
+    fn put(self: *Writer, text: []const u8) RenderError!void {
+        if (self.len + text.len > self.buf.len) return error.NoSpaceLeft;
+        @memcpy(self.buf[self.len..][0..text.len], text);
+        self.len += text.len;
+    }
+};
+
+fn keyName(out: *Writer, key: i32) RenderError!void {
+    switch (key) {
+        key_space => try out.put("Space"),
+        key_enter => try out.put("Enter"),
+        key_backspace => try out.put("Backspace"),
+        key_delete => try out.put("Delete"),
+        else => {
+            if (key < 33 or key > 126) return error.NoSpaceLeft;
+            const ch: [1]u8 = .{@intCast(key)};
+            try out.put(&ch);
+        },
+    }
+}
+
+fn writeBinding(out: *Writer, b: Binding, platform: Platform) RenderError!void {
+    if (b.cmd) {
+        try out.put(cmdName(platform));
+        try out.put("+");
+    }
+    if (b.shift) try out.put("Shift+");
+    try keyName(out, b.key);
+}
+
+/// The key text of one binding ("Ctrl+Shift+S", "Space") in `out`.
+pub fn bindingName(out: []u8, b: Binding, platform: Platform) RenderError![]const u8 {
+    var w = Writer{ .buf = out };
+    try writeBinding(&w, b, platform);
+    return out[0..w.len];
+}
+
+/// Renders every binding of `bindings`, grouped Transport, Edit, File, View, one "<keys>  <label>" line each.
+/// Returns the text in `buf`, or error.NoSpaceLeft when it does not fit.
+pub fn renderHelp(buf: []u8, platform: Platform) RenderError![]const u8 {
+    var w = Writer{ .buf = buf };
+    for (group_titles, 0..) |title, gi| {
+        if (gi != 0) try w.put("\n");
+        try w.put(title);
+        try w.put("\n");
+        for (bindings) |b| {
+            const g = groupOf(b.action) orelse continue;
+            if (@backingInt(g) != gi) continue;
+            try writeBinding(&w, b, platform);
+            try w.put("  ");
+            try w.put(actionLabel(b.action));
+            try w.put("\n");
+        }
+    }
+    return buf[0..w.len];
+}
+
+/// The first binding of `action`, or null when unbound.
+pub fn firstBinding(action: Action) ?Binding {
+    for (bindings) |b| {
+        if (b.action == action) return b;
+    }
+    return null;
+}
+
+const hint_entries = [_]struct { action: Action, label: []const u8 }{
+    .{ .action = .play_stop, .label = "play" },
+    .{ .action = .stop_and_rewind, .label = "stop" },
+    .{ .action = .split_at_playhead, .label = "split" },
+    .{ .action = .zoom_in, .label = "zoom in" },
+    .{ .action = .file_save, .label = "save" },
+    .{ .action = .file_save_as, .label = "save as" },
+    .{ .action = .file_export_wav, .label = "export WAV" },
+};
+
+/// One-line hint for the status bar, built from the table's first binding of each listed action.
+pub fn renderHint(buf: []u8, platform: Platform) RenderError![]const u8 {
+    var w = Writer{ .buf = buf };
+    for (hint_entries, 0..) |entry, i| {
+        const b = firstBinding(entry.action) orelse continue;
+        if (i != 0) try w.put(" \u{b7} ");
+        try writeBinding(&w, b, platform);
+        try w.put(" ");
+        try w.put(entry.label);
+    }
+    return buf[0..w.len];
+}
+
 /// C ABI for the window (app/externs.zig). Returns the Action tag as an int; the
 /// SERIDIAN_ACTION_* constants in app/externs.zig list the tags in the same order (tested there).
 pub export fn seridian_keymap_lookup(key: i32, modifiers: u32) callconv(.c) c_int {
     return @intCast(@backingInt(lookup(key, modifiers)));
+}
+
+/// C ABI: the help text for this platform, NUL-terminated, into `out` (`capacity` bytes). Returns the text
+/// length, or -1 when it does not fit (`out` then holds an empty string).
+pub export fn seridian_keymap_help(out: [*]u8, capacity: usize) callconv(.c) c_int {
+    return exportText(out, capacity, renderHelp(out[0..capacity], native_platform));
+}
+
+/// C ABI: the one-line status-bar hint; same contract as seridian_keymap_help.
+pub export fn seridian_keymap_hint(out: [*]u8, capacity: usize) callconv(.c) c_int {
+    return exportText(out, capacity, renderHint(out[0..capacity], native_platform));
+}
+
+fn exportText(out: [*]u8, capacity: usize, rendered: RenderError![]const u8) c_int {
+    const text = rendered catch {
+        if (capacity > 0) out[0] = 0;
+        return -1;
+    };
+    if (text.len >= capacity) {
+        if (capacity > 0) out[0] = 0;
+        return -1;
+    }
+    out[text.len] = 0;
+    return @intCast(text.len);
 }
 
 /// MIDI pitch for an RKey letter code (A..Z, ';' is 59) played from `octave_base`,
@@ -284,4 +468,71 @@ test "UndoStack: capacity drops the oldest" {
     try testing.expectEqual(@as(?u32, 3), s.undo());
     try testing.expectEqual(@as(?u32, 2), s.undo());
     try testing.expectEqual(@as(?u32, null), s.undo());
+}
+
+test "help: every binding appears in the rendered help" {
+    var buf: [help_capacity]u8 = undefined;
+    for ([_]Platform{ .linux_windows, .macos }) |platform| {
+        const text = try renderHelp(&buf, platform);
+        for (bindings) |b| {
+            var name: [32]u8 = undefined;
+            const keys = try bindingName(&name, b, platform);
+            var line: [96]u8 = undefined;
+            const expect = try std.fmt.bufPrint(&line, "{s}  {s}\n", .{ keys, actionLabel(b.action) });
+            try testing.expect(std.mem.indexOf(u8, text, expect) != null);
+        }
+    }
+}
+
+test "help: grouped under Transport, Edit, File, View" {
+    var buf: [help_capacity]u8 = undefined;
+    const text = try renderHelp(&buf, .linux_windows);
+    const t = std.mem.indexOf(u8, text, "TRANSPORT\n") orelse return error.MissingGroup;
+    const e = std.mem.indexOf(u8, text, "EDIT\n") orelse return error.MissingGroup;
+    const f = std.mem.indexOf(u8, text, "FILE\n") orelse return error.MissingGroup;
+    const v = std.mem.indexOf(u8, text, "VIEW\n") orelse return error.MissingGroup;
+    try testing.expect(t < e and e < f and f < v);
+}
+
+test "help: Linux render says Ctrl, never Cmd; macOS says Cmd" {
+    var buf: [help_capacity]u8 = undefined;
+    const linux = try renderHelp(&buf, .linux_windows);
+    try testing.expect(std.mem.indexOf(u8, linux, "Cmd") == null);
+    try testing.expect(std.mem.indexOf(u8, linux, "Ctrl+Shift+S  ") != null);
+    var buf2: [help_capacity]u8 = undefined;
+    const mac = try renderHelp(&buf2, .macos);
+    try testing.expect(std.mem.indexOf(u8, mac, "Ctrl") == null);
+    try testing.expect(std.mem.indexOf(u8, mac, "Cmd+Shift+S  ") != null);
+}
+
+test "help: a too-small buffer reports an error instead of overflowing" {
+    var tiny: [16]u8 = undefined;
+    try testing.expectError(error.NoSpaceLeft, renderHelp(&tiny, .linux_windows));
+}
+
+test "help: status hint names the table's keys and fits its buffer" {
+    var buf: [hint_capacity]u8 = undefined;
+    const hint = try renderHint(&buf, .linux_windows);
+    try testing.expect(std.mem.indexOf(u8, hint, "Cmd") == null);
+    try testing.expect(std.mem.indexOf(u8, hint, "Ctrl+Shift+E") != null);
+    try testing.expect(std.mem.indexOf(u8, hint, "Space") != null);
+}
+
+test "lookup: export WAV is Ctrl+Shift+E in the table" {
+    try testing.expectEqual(Action.file_export_wav, lookup('E', piano_math.modifier_ctrl | modifier_shift));
+}
+
+test "cmdName: Ctrl off macOS, Cmd on macOS" {
+    try testing.expectEqualStrings("Ctrl", cmdName(.linux_windows));
+    try testing.expectEqualStrings("Cmd", cmdName(.macos));
+}
+
+test "exportText: NUL-terminates and rejects a buffer with no room for the NUL" {
+    var buf: [help_capacity]u8 = undefined;
+    const n = seridian_keymap_help(&buf, buf.len);
+    try testing.expect(n > 0);
+    try testing.expectEqual(@as(u8, 0), buf[@intCast(n)]);
+    var tiny: [8]u8 = undefined;
+    try testing.expectEqual(@as(c_int, -1), seridian_keymap_help(&tiny, tiny.len));
+    try testing.expectEqual(@as(u8, 0), tiny[0]);
 }

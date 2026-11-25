@@ -140,8 +140,9 @@ pub fn build(b: *std.Build) void {
         .link_libc = true,
     });
     ui_tests_mod.addImport("ui_impl", ui_impl);
-    test_ui_step.dependOn(&b.addRunArtifact(b.addTest(.{ .root_module = ui_tests_mod })).step);
-    test_ui_step.dependOn(&b.addRunArtifact(b.addTest(.{ .root_module = ui_impl })).step);
+    const ui_filters: []const []const u8 = if (test_filter) |f| &.{f} else &.{};
+    test_ui_step.dependOn(&b.addRunArtifact(b.addTest(.{ .root_module = ui_tests_mod, .filters = ui_filters })).step);
+    test_ui_step.dependOn(&b.addRunArtifact(b.addTest(.{ .root_module = ui_impl, .filters = ui_filters })).step);
     test_step.dependOn(test_ui_step);
 
     const fmt_step = b.step("fmt", "Check formatting (zig fmt)");

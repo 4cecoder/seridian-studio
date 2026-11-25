@@ -40,7 +40,7 @@ QA reopens an item when the fix does not hold. Developers fix test-first.
 
 | id | status | finding | evidence |
 |----|--------|---------|----------|
-| U1 | open | On-screen help lists `S` for split but not `Ctrl+E`, and omits undo/redo, copy/cut/paste, duplicate, select all, view switching and the pop-out keys. Two copies of the text exist and disagree with `keymap.zig` | `app/settings_transport.zig:579`, `app/mixer.zig:842` |
+| U1 | fixed (guard: keymap.zig tests "help: every binding appears in the rendered help", "help: grouped under Transport, Edit, File, View") | On-screen help lists `S` for split but not `Ctrl+E`, and omits undo/redo, copy/cut/paste, duplicate, select all, view switching and the pop-out keys. Two copies of the text exist and disagree with `keymap.zig` | `app/settings_transport.zig:579`, `app/mixer.zig:842` |
 | U2 | open | `seridian status` / `screenshot` report "window not found" against a KDE Plasma Wayland session | needs a run inside that session |
 | U3 | open | DATA LOSS: closing the window quits with no "unsaved changes" prompt and marks the recovery copy clean, so unsaved MIDI, mixer and automation work is discarded | `on_window_close` `app/project.zig:589-594` |
 | U4 | open | New and Open only warn when `session_has_content()` is true, which counts audio clips and a save location, not MIDI notes or mixer edits. A MIDI-only session is thrown away with no prompt, while a saved but unchanged session always prompts | `app/widgets.zig:201-208`, `app/project.zig:147,507` |
@@ -48,7 +48,7 @@ QA reopens an item when the fix does not hold. Developers fix test-first.
 | U6 | open | Export WAV and Save As have no button, menu entry or tooltip. Export is reachable only by Ctrl+Shift+E (in the status-bar hint but not in the Session tab help), Save As only by Ctrl+Shift+S, which no text mentions | `app/settings_transport.zig:282-288,579`, `app/mixer.zig:842`, `app/actions_popout.zig:130` |
 | U7 | open | The window keymap skips shortcuts while a text field has focus, but the piano key handler has no such check, so typing in a field while the Piano Roll tab is active may play notes and swallow `z` / `x`. The dialog guard also omits `FILE_SAVE`, so Ctrl+S can stack a second file dialog | `app/piano.zig:583-596` vs `app/actions_popout.zig:196`; guard `:23-26` (code reading, not run) |
 | U8 | open | Save As refuses an existing folder name ("A folder with that name already exists") with no overwrite option, while the socket `save` overwrites any existing folder silently; the two paths disagree | `app/project.zig:~176-190` vs `app/control.zig:~262` |
-| U9 | open | Status message says "Cmd+2" on Linux (the binding is Ctrl+2) | `app/actions_popout.zig:59` |
+| U9 | fixed (guard: keymap.zig test "help: Linux render says Ctrl, never Cmd; macOS says Cmd") | Status message says "Cmd+2" on Linux (the binding is Ctrl+2) | `app/actions_popout.zig:59` |
 
 ## Gaps
 

@@ -280,8 +280,11 @@ pub const SERIDIAN_ACTION_ZOOM_IN: c_int = 18;
 pub const SERIDIAN_ACTION_ZOOM_OUT: c_int = 19;
 pub const SERIDIAN_ACTION_POPOUT_PIANO_ROLL: c_int = 20;
 pub const SERIDIAN_ACTION_POPOUT_MIXER: c_int = 21;
-/// Not in the Zig table: the window maps Ctrl+Shift+E itself. Kept last so the tags above match Zig.
 pub const SERIDIAN_ACTION_FILE_EXPORT_WAV: c_int = 22;
+/// Help text and status-bar hint rendered from the keymap table for this platform; NUL-terminated into `out`.
+/// Return the length, or -1 when `capacity` is too small.
+pub extern fn seridian_keymap_help(out: [*]u8, capacity: usize) c_int;
+pub extern fn seridian_keymap_hint(out: [*]u8, capacity: usize) c_int;
 /// Action for an RKey code and RModifier bits, or SERIDIAN_ACTION_NONE.
 pub extern fn seridian_keymap_lookup(key: c_int, modifiers: c_uint) c_int;
 
@@ -290,7 +293,7 @@ test "keymap action tags match the Zig Action enum" {
     const keymap = @import("../keymap.zig");
     try std.testing.expectEqual(@as(c_int, @backingInt(keymap.Action.popout_mixer)), SERIDIAN_ACTION_POPOUT_MIXER);
     try std.testing.expectEqual(@as(c_int, @backingInt(keymap.Action.play_stop)), SERIDIAN_ACTION_PLAY_STOP);
-    try std.testing.expectEqual(@as(usize, @intCast(SERIDIAN_ACTION_FILE_EXPORT_WAV)), @typeInfo(keymap.Action).@"enum".field_names.len);
+    try std.testing.expectEqual(@as(usize, @intCast(SERIDIAN_ACTION_FILE_EXPORT_WAV)) + 1, @typeInfo(keymap.Action).@"enum".field_names.len);
 }
 
 // ---- System preflight (src/system/preflight_c_api.zig, exported from libdaw-engine) ----

@@ -56,7 +56,10 @@ pub fn run_action_for(action: ext.SeridianAction, from_popout: c_int) void {
         ext.SERIDIAN_ACTION_DELETE,
         => blk: {
             if (from_popout == 0 and fns.piano_roll_active() == 0) {
-                fns.set_status("Open the Piano Roll (Cmd+2) to edit notes");
+                var message: [64]u8 = undefined;
+                const name = if (@import("builtin").os.tag == .macos) "Cmd" else "Ctrl";
+                _ = libc.snprintf(&message, message.len, "Open the Piano Roll (%s+2) to edit notes", name);
+                fns.set_status(&message);
                 break :blk;
             }
             if (action == ext.SERIDIAN_ACTION_SELECT_ALL) {
@@ -127,14 +130,6 @@ pub fn text_entry_focused() c_int {
     }
 }
 
-/// Ctrl+Shift+E (Cmd+Shift+E) exports a WAV; the Zig keymap table has no entry for it.
-pub fn export_shortcut(event: [*c]const raven.REvent) ext.SeridianAction {
-    const mods: c_uint = @as(c_uint, event.*.modifiers);
-    if (event.*.key != 'E' or (mods & raven.R_MOD_SHIFT) == 0 or (mods & raven.R_MOD_ALT) != 0) return ext.SERIDIAN_ACTION_NONE;
-    if ((mods & (raven.R_MOD_CTRL | raven.R_MOD_SUPER)) == 0) return ext.SERIDIAN_ACTION_NONE;
-    return ext.SERIDIAN_ACTION_FILE_EXPORT_WAV;
-}
-
 /// Makes `track` the target of the piano roll and the track FX tab.
 pub fn select_track(track: c_int) void {
     if (track < 0 or track >= st.SERIDIAN_TRACK_COUNT) return;
@@ -190,8 +185,7 @@ pub fn keymap_key_handler(context: ?*anyopaque, raw_event: ?*const anyopaque) ca
     _ = context;
     const event: [*c]const raven.REvent = @ptrCast(@alignCast(raw_event));
     if (event.*.type != raven.R_EVENT_KEY_DOWN) return 0;
-    var action: ext.SeridianAction = ext.seridian_keymap_lookup(@bitCast(event.*.key), event.*.modifiers);
-    if (action == ext.SERIDIAN_ACTION_NONE) action = export_shortcut(event);
+    const action: ext.SeridianAction = ext.seridian_keymap_lookup(@bitCast(event.*.key), event.*.modifiers);
     if (action == ext.SERIDIAN_ACTION_NONE) return 0;
     if (text_entry_focused() != 0) return 0;
     if (event.*.repeat == 0) run_action(action);

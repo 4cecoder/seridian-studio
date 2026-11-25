@@ -576,7 +576,13 @@ pub fn build_session_tab() raven.Rid {
     _ = raven.Rwidget_add_child(column, fns.make_wrapped_label("Mute silences a track. Solo plays only tracks marked Solo. Arm a track to record into it. Pan sets the stereo position.", 12.0, &st.muted_text));
 
     _ = raven.Rwidget_add_child(column, fns.make_label("SHORTCUTS", 12.0, &st.accent_cyan));
-    _ = raven.Rwidget_add_child(column, fns.make_wrapped_label("Space  play / pause\nEnter  stop\nS  split at playhead\n=  /  -  zoom timeline\nCtrl+N  new    Ctrl+O  open    Ctrl+S  save", 12.0, &st.muted_text));
+    var help: [2048]u8 = undefined;
+    // Rendered from the keymap table, so it cannot drift from the real bindings.
+    if (ext.seridian_keymap_help(&help, help.len) < 0) {
+        help[0] = 0;
+        fns.set_status("Shortcut help is unavailable");
+    }
+    _ = raven.Rwidget_add_child(column, fns.make_wrapped_label(&help, 12.0, &st.muted_text));
 
     const foot: raven.Rid = fns.make_column(5.0);
     _ = raven.Rwidget_add_child(foot, fns.make_label("A SERIDIAN PRODUCT", 12.0, &st.accent_magenta));
