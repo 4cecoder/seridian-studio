@@ -267,6 +267,21 @@ pub export fn seridian_keymap_help(out: [*]u8, capacity: usize) callconv(.c) c_i
     return exportText(out, capacity, renderHelp(out[0..capacity], native_platform));
 }
 
+/// The key text of the first binding of `action` ("Ctrl+Shift+S"), for tooltips.
+pub fn shortcutText(out: []u8, action: Action, platform: Platform) error{ Unbound, NoSpaceLeft }![]const u8 {
+    const b = firstBinding(action) orelse return error.Unbound;
+    return bindingName(out, b, platform);
+}
+
+/// C ABI: the shortcut text of action tag `action`, NUL-terminated into `out`. Returns the length, or -1 when the
+/// tag is unknown or unbound or `capacity` is too small.
+pub export fn seridian_keymap_shortcut(action: c_int, out: [*]u8, capacity: usize) callconv(.c) c_int {
+    if (action < 0 or action >= @typeInfo(Action).@"enum".field_names.len) return exportText(out, capacity, error.NoSpaceLeft);
+    const tag: Action = @fromBackingInt(@intCast(action));
+    const text = shortcutText(out[0..capacity], tag, native_platform) catch return exportText(out, capacity, error.NoSpaceLeft);
+    return exportText(out, capacity, text);
+}
+
 /// C ABI: the one-line status-bar hint; same contract as seridian_keymap_help.
 pub export fn seridian_keymap_hint(out: [*]u8, capacity: usize) callconv(.c) c_int {
     return exportText(out, capacity, renderHint(out[0..capacity], native_platform));
@@ -559,4 +574,25 @@ test "help: split is listed once, as Ctrl+E" {
     const text = try renderHelp(&buf, .linux_windows);
     try testing.expect(std.mem.indexOf(u8, text, "Ctrl+E  Split at playhead\n") != null);
     try testing.expect(std.mem.indexOf(u8, text, "\nS  Split") == null);
+}
+
+test "U6: shortcut text for Save As and Export WAV comes from the table" {
+    var buf: [32]u8 = undefined;
+    try testing.expectEqualStrings("Ctrl+Shift+S", try shortcutText(&buf, .file_save_as, .linux_windows));
+    try testing.expectEqualStrings("Cmd+Shift+E", try shortcutText(&buf, .file_export_wav, .macos));
+}
+
+test "U6: an unbound action has no shortcut text" {
+    var buf: [32]u8 = undefined;
+    try testing.expectError(error.Unbound, shortcutText(&buf, .none, .linux_windows));
+}
+
+test "U6: C ABI shortcut text is NUL-terminated and rejects a small buffer" {
+    var buf: [32]u8 = undefined;
+    const n = seridian_keymap_shortcut(@intCast(@backingInt(Action.file_save_as)), &buf, buf.len);
+    try testing.expect(n > 0);
+    try testing.expectEqual(@as(u8, 0), buf[@intCast(n)]);
+    var tiny: [4]u8 = undefined;
+    try testing.expectEqual(@as(c_int, -1), seridian_keymap_shortcut(@intCast(@backingInt(Action.file_save_as)), &tiny, tiny.len));
+    try testing.expectEqual(@as(c_int, -1), seridian_keymap_shortcut(9999, &buf, buf.len));
 }

@@ -285,6 +285,8 @@ pub const SERIDIAN_ACTION_FILE_EXPORT_WAV: c_int = 22;
 /// Return the length, or -1 when `capacity` is too small.
 pub extern fn seridian_keymap_help(out: [*]u8, capacity: usize) c_int;
 pub extern fn seridian_keymap_hint(out: [*]u8, capacity: usize) c_int;
+/// Key text of an action's first binding ("Ctrl+Shift+S"), NUL-terminated into `out`; -1 when unbound or too small.
+pub extern fn seridian_keymap_shortcut(action: c_int, out: [*]u8, capacity: usize) c_int;
 /// Action for an RKey code and RModifier bits, or SERIDIAN_ACTION_NONE.
 pub extern fn seridian_keymap_lookup(key: c_int, modifiers: c_uint) c_int;
 

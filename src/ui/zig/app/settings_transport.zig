@@ -285,10 +285,38 @@ pub fn build_header() raven.Rid {
     raven.Rwidget_set_tooltip(open_button, "Open a saved Seridian Studio session folder (Ctrl+O)");
     const save_button: raven.Rid = fns.add_button(row, "Save", &fns.on_save_project, null, raven.R_BUTTON_DEFAULT);
     raven.Rwidget_set_tooltip(save_button, "Save this session to its current folder (Ctrl+S)");
+    const save_as_button: raven.Rid = fns.add_button(row, "Save As", &on_save_as_button, null, raven.R_BUTTON_FLAT);
+    set_shortcut_tooltip(save_as_button, "Save this session to a new folder", ext.SERIDIAN_ACTION_FILE_SAVE_AS);
+    const export_button: raven.Rid = fns.add_button(row, "Export WAV", &on_export_button, null, raven.R_BUTTON_FLAT);
+    set_shortcut_tooltip(export_button, "Render the mix to a WAV file", ext.SERIDIAN_ACTION_FILE_EXPORT_WAV);
     const settings_button: raven.Rid = fns.add_button(row, "Settings", &on_open_settings, null, raven.R_BUTTON_FLAT);
     raven.Rwidget_set_tooltip(settings_button, "Audio devices, sample rate and buffer size");
     fns.build_preflight_indicator(row);
     return fns.make_panel(row, 12.0);
+}
+
+/// Tooltip "<what> (<shortcut>)", the shortcut text coming from the keymap table.
+fn set_shortcut_tooltip(widget: raven.Rid, what: [*c]const u8, action: ext.SeridianAction) void {
+    var keys: [32]u8 = undefined;
+    var text: [96]u8 = undefined;
+    if (ext.seridian_keymap_shortcut(action, &keys, keys.len) < 0) {
+        raven.Rwidget_set_tooltip(widget, what);
+        return;
+    }
+    _ = libc.snprintf(&text, text.len, "%s (%s)", what, @as([*c]const u8, &keys));
+    raven.Rwidget_set_tooltip(widget, &text);
+}
+
+fn on_save_as_button(button: raven.Rid, user_data: ?*anyopaque) callconv(.c) void {
+    _ = button;
+    _ = user_data;
+    fns.run_action(ext.SERIDIAN_ACTION_FILE_SAVE_AS);
+}
+
+fn on_export_button(button: raven.Rid, user_data: ?*anyopaque) callconv(.c) void {
+    _ = button;
+    _ = user_data;
+    fns.run_action(ext.SERIDIAN_ACTION_FILE_EXPORT_WAV);
 }
 
 pub fn bpm_apply(bpm: f64) void {
