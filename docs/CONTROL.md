@@ -91,6 +91,9 @@ mute|solo|arm on|off | reverb on|off | reverb wet <0..1> | name TEXT | instrumen
 | `set N name TEXT` | 1 to 24 printable ASCII characters, at most 5 words | See below. |
 | `set N instrument NAME` | a name from `seridian instruments` | See below. |
 
+Numbers are plain decimals: an optional minus, digits, an optional `.digits` and an optional exponent (`0.5`, `-1`,
+`1e2`). Hex (`0x1`), underscores, a leading plus, `.5`, `inf` and `nan` are refused by both the CLI and the app.
+
 Common errors: `track must be 1..8`, `field must be gain, pan, mute, solo, arm, reverb, name or instrument`, and
 `usage: set <track> gain|pan|mute|solo|arm|reverb|instrument <value> | set <track> reverb wet <0..1> | set <track> name <text>`.
 
@@ -99,7 +102,7 @@ Common errors: `track must be 1..8`, `field must be gain, pan, mute, solo, arm, 
 with no leading, trailing or doubled space and no control characters (tab, newline, DEL and so on), and at most
 5 words. Anything else is refused with
 `name must be 1 to 24 printable characters (letters, digits, punctuation, spaces) in at most 5 words`.
-`state` reports the name in `tracks[].name`; `save` writes it and `open` restores it. Unnamed tracks show as
+`state` reports the name in `tracks[].name`; `save` writes it and `open` restores it (an invalid name in a hand-edited project file falls back to `Track N`). Unnamed tracks show as
 `Track 1` to `Track 8`.
 
 **Instruments.** `seridian instruments` prints every name, one per line, from the same table the app uses:
@@ -149,6 +152,10 @@ or harp`, `that track's effects chain is full`, `the master effects chain is ful
 for `auto` and `eq`.
 
 ### Files
+
+`save` and `open` keep the whole mixer: track names, instruments, gain, pan, mute, solo, arm, each track's effects chain
+(reverb with its wet amount, EQ presets, master tilt) and every automation lane. `open` replaces the effects
+and lanes with the saved ones; a project file written before these were saved opens with empty chains.
 
 | Command | Reply |
 |---------|-------|
