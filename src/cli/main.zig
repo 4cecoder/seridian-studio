@@ -62,7 +62,7 @@ const play_usage = "seridian play";
 const stop_usage = "seridian stop";
 const bpm_usage = "seridian bpm <20..300>";
 const instruments_usage = "seridian instruments";
-const set_usage = "seridian set <track 1..8> gain <0..1.5> | pan <-1..1> | mute|solo|arm on|off | reverb on|off | reverb wet <0..1> | instrument NAME (see `seridian instruments`)";
+const set_usage = "seridian set <track 1..8> gain <0..1.5> | pan <-1..1> | mute|solo|arm on|off | reverb on|off | reverb wet <0..1> | name TEXT (1..24 printable characters) | instrument NAME (see `seridian instruments`)";
 const note_usage = "seridian note <track 1..8> <pitch 0..127> <start >=0> <length >0> [velocity 1..127]";
 const clear_usage = "seridian clear <track 1..8>";
 const auto_usage = "seridian auto <track 1..8> gain <beat >=0> <0..1> | pan <beat> <-1..1> | wet <beat> <0..1>; auto master gain <beat> <0..1>; auto clear <track> gain|pan|wet";
@@ -164,7 +164,7 @@ const commands = [_]Command{
     .{ .name = "stop", .summary = "Stop playback in the running app", .usage = stop_usage, .run = cmdStop },
     .{ .name = "bpm", .summary = "Set the tempo (20..300)", .usage = bpm_usage, .run = cmdBpm },
     .{ .name = "instruments", .summary = "List the instrument names `set N instrument` accepts, one per line", .usage = instruments_usage, .run = cmdInstruments },
-    .{ .name = "set", .summary = "Set a track's gain, pan, mute, solo, arm, reverb or instrument", .usage = set_usage, .run = cmdSet },
+    .{ .name = "set", .summary = "Set a track's gain, pan, mute, solo, arm, reverb, name or instrument", .usage = set_usage, .run = cmdSet },
     .{ .name = "note", .summary = "Add a note: track, pitch, start beat, length in beats, optional velocity", .usage = note_usage, .run = cmdNote },
     .{ .name = "clear", .summary = "Remove all notes on a track", .usage = clear_usage, .run = cmdClear },
     .{ .name = "auto", .summary = "Add an automation point (gain, pan, reverb wet, master gain) or clear a lane", .usage = auto_usage, .run = cmdAuto },
@@ -831,6 +831,27 @@ fn absolutePath(allocator: std.mem.Allocator, cwd: []const u8, path: []const u8)
     return std.fs.path.resolve(allocator, &.{ cwd, path });
 }
 
+/// Joins the words of `parts` (split on spaces, empty words dropped) with single spaces into `buf`.
+/// Null when the result is not a valid track name.
+fn joinWords(buf: []u8, parts: []const []const u8) ?[]const u8 {
+    var used: usize = 0;
+    for (parts) |part| {
+        var words = std.mem.tokenizeScalar(u8, part, ' ');
+        while (words.next()) |word| {
+            const extra = word.len + @intFromBool(used > 0);
+            if (used + extra > buf.len) return null;
+            if (used > 0) {
+                buf[used] = ' ';
+                used += 1;
+            }
+            @memcpy(buf[used..][0..word.len], word);
+            used += word.len;
+        }
+    }
+    const joined = buf[0..used];
+    return if (control_limits.isValidTrackName(joined)) joined else null;
+}
+
 /// Checks the arguments of one command and renders the line sent to the app.
 /// Track numbers are 1-based on the wire, as typed.
 fn buildLine(buf: []u8, name: []const u8, args: []const []const u8) ArgError![]const u8 {
@@ -857,6 +878,12 @@ fn buildLine(buf: []u8, name: []const u8, args: []const []const u8) ArgError![]c
         return std.fmt.bufPrint(buf, "{s} {s}", .{ name, path }) catch too_long;
     }
     if (std.mem.eql(u8, name, "set")) {
+        if (args.len >= 2 and std.mem.eql(u8, args[1], "name")) {
+            const track = try parseIntIn(args[0], 1, max_track);
+            var name_buf: [control_limits.max_track_name + 1]u8 = undefined;
+            const track_name = joinWords(&name_buf, args[2..]) orelse return error.InvalidArgs;
+            return std.fmt.bufPrint(buf, "set {d} name {s}", .{ track, track_name }) catch too_long;
+        }
         if (args.len == 4 and std.mem.eql(u8, args[1], "reverb")) {
             const track = try parseIntIn(args[0], 1, max_track);
             if (!std.mem.eql(u8, args[2], "wet")) return error.InvalidArgs;
@@ -965,6 +992,10 @@ fn describeProblem(buf: []u8, name: []const u8, args: []const []const u8) []cons
         return intProblem(buf, "track", args[0], 1, max_track) orelse fallback;
     }
     if (eql(u8, name, "set")) {
+        if (args.len >= 2 and eql(u8, args[1], "name")) {
+            if (intProblem(buf, "track", args[0], 1, max_track)) |m| return m;
+            return control_limits.name_message;
+        }
         if (args.len == 4 and eql(u8, args[1], "reverb")) {
             if (intProblem(buf, "track", args[0], 1, max_track)) |m| return m;
             if (!eql(u8, args[2], "wet")) return given(buf, "reverb must be on, off or wet <0..1>", args[2]);
@@ -986,7 +1017,7 @@ fn describeProblem(buf: []u8, name: []const u8, args: []const []const u8) []cons
             const all = instrument_types.joinNames(&names, ", ") orelse return fallback;
             return std.fmt.bufPrint(buf, "unknown instrument '{s}'; use one of: {s}", .{ args[2], all }) catch fallback;
         }
-        return std.fmt.bufPrint(buf, "unknown setting '{s}'; use gain, pan, mute, solo, arm, reverb or instrument", .{field}) catch fallback;
+        return std.fmt.bufPrint(buf, "unknown setting '{s}'; use gain, pan, mute, solo, arm, reverb, name or instrument", .{field}) catch fallback;
     }
     if (eql(u8, name, "eq")) {
         if (args.len != 3) return countProblem(buf, "eq takes 3 arguments", args.len);
@@ -1618,7 +1649,7 @@ test "describeProblem covers tempo, set, eq, auto and clear" {
     try expectProblem("gain must be a number 0..1.5, got '99'", "set", &.{ "1", "gain", "99" });
     try expectProblem("pan must be a number -1..1, got '2'", "set", &.{ "1", "pan", "2" });
     try expectProblem("mute must be on or off, got 'maybe'", "set", &.{ "1", "mute", "maybe" });
-    try expectProblem("unknown setting 'colour'; use gain, pan, mute, solo, arm, reverb or instrument", "set", &.{ "1", "colour", "3" });
+    try expectProblem("unknown setting 'colour'; use gain, pan, mute, solo, arm, reverb, name or instrument", "set", &.{ "1", "colour", "3" });
     try expectProblem("unknown preset 'nope'; use drums, bass, pads, lead or harp", "eq", &.{ "1", "preset", "nope" });
     try expectProblem("track must be a whole number 1..8, got '0'", "clear", &.{"0"});
     try expectProblem("lane must be gain, pan or wet, got 'volume'", "auto", &.{ "1", "volume", "0", "0.5" });
@@ -1701,4 +1732,27 @@ test "note start and length share one limit with the app (B3)" {
     // The app reports the same words.
     try std.testing.expectEqualStrings("start must be a number of beats 0..1000000", control_limits.start_message);
     try std.testing.expectEqualStrings("length must be a number of beats above 0 and up to 1000000", control_limits.length_message);
+}
+
+test "set name: one to 24 printable characters" {
+    try expectLine("set 1 name Bass", "set", &.{ "1", "name", "Bass" });
+    try expectLine("set 2 name Lead Synth", "set", &.{ "2", "name", "Lead", "Synth" });
+    try expectLine("set 2 name Lead Synth", "set", &.{ "2", "name", "Lead Synth" });
+    try expectLine("set 8 name Pad wide", "set", &.{ "8", "name", "Pad", "", "wide" });
+    try expectLine("set 3 name aaaaaaaaaaaaaaaaaaaaaaaa", "set", &.{ "3", "name", "aaaaaaaaaaaaaaaaaaaaaaaa" });
+    try expectRejected("set", &.{ "1", "name" });
+    try expectRejected("set", &.{ "1", "name", "" });
+    try expectRejected("set", &.{ "1", "name", "aaaaaaaaaaaaaaaaaaaaaaaaa" });
+    try expectRejected("set", &.{ "1", "name", "tab\there" });
+    try expectRejected("set", &.{ "1", "name", "bell\x07" });
+    try expectRejected("set", &.{ "1", "name", "del\x7f" });
+    try expectRejected("set", &.{ "1", "name", "new\nline" });
+    try expectRejected("set", &.{ "1", "name", "Bj\xc3\xb6rn" });
+    try expectRejected("set", &.{ "1", "name", "a", "b", "c", "d", "e", "f" });
+    try expectRejected("set", &.{ "9", "name", "Bass" });
+}
+
+test "describeProblem explains a bad track name" {
+    try expectProblem("name must be 1 to 24 printable characters (letters, digits, punctuation, spaces) in at most 5 words", "set", &.{ "1", "name", "tab\there" });
+    try expectProblem("name must be 1 to 24 printable characters (letters, digits, punctuation, spaces) in at most 5 words", "set", &.{ "1", "name" });
 }

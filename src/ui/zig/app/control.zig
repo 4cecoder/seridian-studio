@@ -166,9 +166,35 @@ fn unknown_instrument_message() [*c]const u8 {
     return &instrument_error;
 }
 
+var track_name_text: [control_limits.max_track_name + 2]u8 = undefined;
+
+/// set <track> name <word> [word ...]: the words joined by single spaces are the track's name.
+fn control_set_name(argv: [*c][*c]u8, argc: c_int) [*c]const u8 {
+    var track: c_int = 0;
+    if (control_parse_track(argv[1], &track) == 0) return "track must be 1..8";
+    var used: usize = 0;
+    var i: usize = 3;
+    while (i < @as(usize, @intCast(argc))) : (i += 1) {
+        const word = std.mem.span(@as([*:0]const u8, @ptrCast(argv[i])));
+        const extra = word.len + @intFromBool(used > 0);
+        if (used + extra > control_limits.max_track_name) return control_limits.name_message;
+        if (used > 0) {
+            track_name_text[used] = ' ';
+            used += 1;
+        }
+        @memcpy(track_name_text[used..][0..word.len], word);
+        used += word.len;
+    }
+    track_name_text[used] = 0;
+    if (!control_limits.isValidTrackName(track_name_text[0..used])) return control_limits.name_message;
+    ext.project_set_track_name(track, &track_name_text);
+    return null;
+}
+
 pub fn control_set(argv: [*c][*c]u8, argc: c_int) [*c]const u8 {
     var track: c_int = 0;
-    const usage: [*c]const u8 = "usage: set <track> gain|pan|mute|solo|arm|reverb|instrument <value> | set <track> reverb wet <0..1>";
+    const usage: [*c]const u8 = "usage: set <track> gain|pan|mute|solo|arm|reverb|instrument <value> | set <track> reverb wet <0..1> | set <track> name <text>";
+    if (argc >= 4 and libc.strcmp(argv[2], "name") == 0) return control_set_name(argv, argc);
     if (argc != 4 and argc != 5) return usage;
     if (control_parse_track(argv[1], &track) == 0) return "track must be 1..8";
     const field: [*c]const u8 = argv[2];

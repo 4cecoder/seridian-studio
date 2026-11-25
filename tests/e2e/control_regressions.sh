@@ -6,7 +6,7 @@
 # kills only the pid it started.
 #
 # Usage: tests/e2e/control_regressions.sh [test-name ...]
-#   tests: open_restores_bpm_and_master, relative_paths_are_absolute, one_command_per_request, single_instance, instruments_round_trip, reverb_from_the_cli, transport_replies, note_limits_agree, file_errors_name_the_cause, state_is_fresh_after_a_command
+#   tests: open_restores_bpm_and_master, relative_paths_are_absolute, one_command_per_request, single_instance, instruments_round_trip, reverb_from_the_cli, transport_replies, note_limits_agree, file_errors_name_the_cause, state_is_fresh_after_a_command, track_names
 # Requires: zig-out/bin/seridian and zig-out/bin/seridian-studio-headless
 #   (zig build -Dheadless=true), jq, python3. Exit code 0 when all selected tests pass.
 
@@ -322,7 +322,27 @@ PY
     "$CLI" bpm 120 >/dev/null; "$CLI" set 3 gain 0.75 >/dev/null
 }
 
-ALL="open_restores_bpm_and_master relative_paths_are_absolute one_command_per_request single_instance instruments_round_trip reverb_from_the_cli transport_replies note_limits_agree file_errors_name_the_cause state_is_fresh_after_a_command"
+test_track_names() {
+    echo "== set N name renames a track; state reports it; save and open keep it (G2, partly)"
+    local reply dir="$WORK/names" got
+    "$CLI" set 1 name Bass Line >/dev/null 2>&1 && pass "set 1 name Bass Line" || fail "set 1 name Bass Line"
+    [ "$(state_field '.tracks[0].name')" = "Bass Line" ] && pass "state reports the new name" || fail "state reports the new name (got $(state_field '.tracks[0].name'))"
+    "$CLI" set 2 name "Lead 2" >/dev/null 2>&1 && pass "set 2 name \"Lead 2\"" || fail "set 2 name Lead 2"
+    reply="$(raw_send 'set 3 name aaaaaaaaaaaaaaaaaaaaaaaaa\n')"
+    case "$reply" in error:*) pass "25 characters refused ($reply)" ;; *) fail "25 characters refused (got $reply)" ;; esac
+    reply="$(raw_send 'set 3 name bad\x01name\n')"
+    case "$reply" in error:*) pass "control character refused ($reply)" ;; *) fail "control character refused (got $reply)" ;; esac
+    reply="$(raw_send 'set 3 name\n')"
+    case "$reply" in error:*) pass "missing name refused ($reply)" ;; *) fail "missing name refused (got $reply)" ;; esac
+    [ "$(state_field '.tracks[2].name')" != "bad" ] && pass "a refused name changes nothing" || fail "a refused name changes nothing"
+    "$CLI" save "$dir" >/dev/null 2>&1 || { fail "save"; return; }
+    "$CLI" set 1 name Other >/dev/null 2>&1
+    "$CLI" open "$dir" >/dev/null 2>&1 || { fail "open"; return; }
+    got="$(wait_text '.tracks[0].name' 'Bass Line')" && pass "open restores the saved name" || fail "open restores the saved name (got $got)"
+    [ "$(state_field '.tracks[1].name')" = "Lead 2" ] && pass "second name restored too" || fail "second name restored too"
+}
+
+ALL="open_restores_bpm_and_master relative_paths_are_absolute one_command_per_request single_instance instruments_round_trip reverb_from_the_cli transport_replies note_limits_agree file_errors_name_the_cause state_is_fresh_after_a_command track_names"
 SELECTED="${*:-$ALL}"
 for name in $SELECTED; do
     "test_$name"
