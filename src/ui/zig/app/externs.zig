@@ -152,6 +152,9 @@ pub extern fn piano_roll_clear_notes(widget: raven.Rid) void;
 pub extern fn piano_roll_set_playhead(widget: raven.Rid, beat: f64, follow: c_int) void;
 
 pub extern fn project_set_bpm(bpm: f32) void;
+pub extern fn project_get_bpm() f32;
+pub extern fn project_set_master_volume(volume: f32) void;
+pub extern fn project_get_master_volume() f32;
 pub extern fn project_set_track_pan(track: c_int, pan: f32) void;
 pub extern fn project_set_track_volume(track: c_int, volume: f32) void;
 pub extern fn project_get_track_volume(track: c_int) f32;

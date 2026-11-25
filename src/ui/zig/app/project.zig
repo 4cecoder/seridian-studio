@@ -212,6 +212,7 @@ pub fn validate_session_name(name: [*c]const u8) [*c]const u8 {
 /// The engine is the source of truth for the mixer, so its per-track state is copied into the project model
 /// right before every save. The instrument is stored as its engine type, or -1 for none.
 pub fn project_capture_mixer() void {
+    ext.project_set_master_volume(app.master_gain);
     var i: c_int = 0;
     while (i < st.SERIDIAN_PROJECT_TRACKS and i < st.SERIDIAN_TRACK_COUNT) : (i += 1) {
         ext.project_set_track_volume(i, ext.audio_engine_get_track_gain(app.engine, i));
@@ -226,6 +227,8 @@ pub fn project_capture_mixer() void {
 
 /// Applies the loaded project's per-track state through the same engine calls the mixer uses, then redraws it.
 pub fn project_apply_mixer() void {
+    app.master_gain = ext.project_get_master_volume();
+    ext.audio_engine_set_master_gain(app.engine, app.master_gain);
     var i: c_int = 0;
     while (i < st.SERIDIAN_PROJECT_TRACKS and i < st.SERIDIAN_TRACK_COUNT) : (i += 1) {
         const instrument = ext.project_get_track_instrument(i);
@@ -409,6 +412,10 @@ pub fn refresh_after_load() void {
     fns.populate_timeline();
     rebuild_fx_slots();
     update_project_title();
+    // The loaded tempo goes to the engine and the spin box only: routing it through bpm_apply would mark the
+    // freshly opened project as modified.
+    const bpm: f32 = ext.project_get_bpm();
+    ext.audio_engine_set_tempo(app.engine, bpm);
     raven.Rspin_box_set_value(app.bpm_input, ext.audio_engine_get_tempo(app.engine));
     raven.Rbutton_set_text(app.play_button, "▶  Play");
 }
