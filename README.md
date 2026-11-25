@@ -51,6 +51,16 @@ default input through PulseAudio/PipeWire.
 - `libs/`: Zig libraries layered per `docs/design/architecture.md` (`zig build test-<name>`); `libs/RUST_TO_ZIG.md` is the guide for the translations from SoundCraft
 - `libs/vocal`: realtime vocal processing translated from PitchPure (pitch correction, formant, harmony, vocal EQ, de-ess, rider, compressor, denoise, tape, delay, reverb, limiter, and the full vocal chain); exposed as track effects by `src/effects/vocal.zig`
 
+## Install
+
+```sh
+zig build -Doptimize=ReleaseSafe
+packaging/install.sh                  # system-wide, PREFIX=/usr/local (use doas or sudo)
+PREFIX=$HOME/.local packaging/install.sh   # one user
+```
+
+This installs the app, its libraries, a desktop entry with icon (`StartupWMClass=seridian-studio`, so KDE Plasma and other shells match the window to its launcher), and AppStream metadata.
+
 ## License
 
 Raven is Apache-2.0 as well; its upstream `LICENSE` and `NOTICE` are included with the vendored dependency. Parts of `libs/` are translated from SoundCraft (MIT OR Apache-2.0, ArtCraft Team and the SoundCraft contributors); see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for the license text and attribution. Seridian Studio itself is licensed under the Apache License 2.0; see [LICENSE](LICENSE).

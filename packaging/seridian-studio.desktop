@@ -1,0 +1,22 @@
+[Desktop Entry]
+Type=Application
+Version=1.5
+Name=Seridian Studio
+GenericName=Digital Audio Workstation
+Comment=Record, arrange and mix music
+Exec=seridian-studio
+TryExec=seridian-studio
+Icon=seridian-studio
+Terminal=false
+Categories=AudioVideo;Audio;Midi;Sequencer;Music;
+Keywords=daw;audio;music;midi;recording;mixer;studio;seridian;
+StartupNotify=true
+# The window class Raven sets (src/ui/zig/app_identity.zig). Plasma, GNOME and
+# other shells use it to tie the running window to this launcher.
+StartupWMClass=seridian-studio
+X-KDE-StartupNotify=true
+Actions=NewSession;
+
+[Desktop Action NewSession]
+Name=New session
+Exec=seridian-studio

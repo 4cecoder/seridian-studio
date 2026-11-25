@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>dev.seridian.studio</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>Apache-2.0</project_license>
+  <name>Seridian Studio</name>
+  <summary>A Linux-first digital audio workstation</summary>
+  <description>
+    <p>Seridian Studio is a digital audio workstation written in Zig. It has an arrangement view, a piano roll, a mixer, physically modelled instruments, mastering and automation, and a command-line tool that controls the running app.</p>
+  </description>
+  <launchable type="desktop-id">seridian-studio.desktop</launchable>
+  <url type="homepage">https://github.com/4cecoder/seridian-studio</url>
+  <url type="bugtracker">https://github.com/4cecoder/seridian-studio/issues</url>
+  <categories>
+    <category>AudioVideo</category>
+    <category>Audio</category>
+    <category>Midi</category>
+    <category>Sequencer</category>
+    <category>Music</category>
+  </categories>
+  <provides>
+    <binary>seridian-studio</binary>
+    <binary>seridian</binary>
+  </provides>
+</component>
