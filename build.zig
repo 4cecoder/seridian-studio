@@ -60,7 +60,11 @@ pub fn build(b: *std.Build) void {
 
     // Unit tests: everything below the UI, no display or audio server needed.
     const test_mod = engineModule(ctx, "src/test_main.zig");
-    const tests = b.addTest(.{ .root_module = test_mod });
+    const test_filter = b.option([]const u8, "test-filter", "Only run unit tests whose name contains this text");
+    const tests = b.addTest(.{
+        .root_module = test_mod,
+        .filters = if (test_filter) |f| &.{f} else &.{},
+    });
     const run_tests = b.addRunArtifact(tests);
     const test_step = b.step("test", "Run unit tests (engine plus every library)");
     test_step.dependOn(&run_tests.step);

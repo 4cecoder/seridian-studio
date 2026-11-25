@@ -35,6 +35,10 @@ const PROJECT_FILE = "project.daw";
 const TEMP_FILE = "project.daw.tmp";
 const MIDI_FILE_PREFIX = "midi_track";
 const MIDI_FILE_EXT = ".bin";
+/// Attempts to serialize a clip that is being edited while it is saved.
+/// Upper bound on one track file when loading (guards against absurd allocations).
+const MAX_MIDI_FILE_BYTES = 256 * 1024 * 1024;
+const MIDI_SERIALIZE_RETRIES = 4;
 
 /// Fixed buffer writer for INI generation
 const FixedBufferWriter = struct {
@@ -118,65 +122,71 @@ pub fn saveProject(allocator: std.mem.Allocator, project: *const Project, folder
     try std.Io.Dir.cwd().rename(temp_path, std.Io.Dir.cwd(), final_path, sys.io());
 
     // Save MIDI data for each track
-    saveMidiData(allocator, folder_path) catch |err| {
-        log.warn("Failed to save MIDI data: {}", .{err});
-    };
+    try saveMidiData(allocator, folder_path);
 
     log.info("Project saved: {s}", .{final_path});
 }
 
-/// Save MIDI data for all tracks
+/// Save MIDI data for all tracks. Each buffer is sized from the clip, so no
+/// track is dropped; any track that cannot be written is an error.
 fn saveMidiData(allocator: std.mem.Allocator, folder_path: []const u8) !void {
-    var midi_buffer: [32768]u8 = undefined; // 32KB per track max
-
     for (0..project_mod.TRACK_COUNT) |track_idx| {
         const track: c_int = @intCast(track_idx);
 
-        // Skip tracks with no MIDI data
-        if (midi_clip_has_notes(track) == 0) {
-            // Delete old MIDI file if it exists
-            var filename_buf: [64]u8 = undefined;
-            const filename = std.fmt.bufPrint(&filename_buf, "{s}{d}{s}", .{
-                MIDI_FILE_PREFIX,
-                track_idx,
-                MIDI_FILE_EXT,
-            }) catch continue;
-
-            const midi_path = std.fs.path.join(allocator, &[_][]const u8{ folder_path, filename }) catch continue;
-            defer allocator.free(midi_path);
-
-            std.Io.Dir.cwd().deleteFile(sys.io(), midi_path) catch {};
-            continue;
-        }
-
-        // Serialize MIDI data
-        const size = midi_clip_serialize(track, &midi_buffer, @intCast(midi_buffer.len));
-        if (size <= 0) continue;
-
-        // Build filename: midi_track0.bin, midi_track1.bin, etc.
         var filename_buf: [64]u8 = undefined;
-        const filename = std.fmt.bufPrint(&filename_buf, "{s}{d}{s}", .{
+        const filename = try std.fmt.bufPrint(&filename_buf, "{s}{d}{s}", .{
             MIDI_FILE_PREFIX,
             track_idx,
             MIDI_FILE_EXT,
-        }) catch continue;
-
+        });
         const midi_path = try std.fs.path.join(allocator, &[_][]const u8{ folder_path, filename });
         defer allocator.free(midi_path);
 
-        // Write MIDI file
+        // Tracks with no MIDI data: delete a stale file from an earlier save.
+        if (midi_clip_has_notes(track) == 0) {
+            std.Io.Dir.cwd().deleteFile(sys.io(), midi_path) catch |err| switch (err) {
+                error.FileNotFound => {},
+                else => {
+                    log.warn("Failed to remove stale MIDI file {s}: {}", .{ midi_path, err });
+                    return err;
+                },
+            };
+            continue;
+        }
+
+        // Serialize into a buffer sized for this clip. The clip can grow
+        // between the size query and the copy, so retry on a too-small buffer.
+        var buffer: []u8 = &.{};
+        defer allocator.free(buffer);
+        var written: usize = 0;
+        var attempts: usize = 0;
+        while (attempts < MIDI_SERIALIZE_RETRIES) : (attempts += 1) {
+            const needed = midi_clip_get_serialize_size(track);
+            if (needed <= 0) return error.MidiSerializeFailed;
+            allocator.free(buffer);
+            buffer = &.{};
+            buffer = try allocator.alloc(u8, @intCast(needed));
+            const size = midi_clip_serialize(track, buffer.ptr, @intCast(buffer.len));
+            if (size > 0) {
+                written = @intCast(size);
+                break;
+            }
+        }
+        if (written == 0) return error.MidiSerializeFailed;
+        const data = buffer[0..written];
+
         const midi_file = std.Io.Dir.cwd().createFile(sys.io(), midi_path, .{}) catch |err| {
             log.warn("Failed to create MIDI file {s}: {}", .{ midi_path, err });
-            continue;
+            return err;
         };
         defer midi_file.close(sys.io());
 
-        midi_file.writeStreamingAll(sys.io(), midi_buffer[0..@intCast(size)]) catch |err| {
+        midi_file.writeStreamingAll(sys.io(), data) catch |err| {
             log.warn("Failed to write MIDI file {s}: {}", .{ midi_path, err });
-            continue;
+            return err;
         };
 
-        log.info("Saved MIDI data for track {}: {s} ({} bytes)", .{ track_idx, midi_path, size });
+        log.info("Saved MIDI data for track {}: {s} ({} bytes)", .{ track_idx, midi_path, data.len });
     }
 }
 
@@ -300,8 +310,6 @@ pub fn loadProject(allocator: std.mem.Allocator, folder_path: []const u8) !Proje
 
 /// Load MIDI data for all tracks
 fn loadMidiData(allocator: std.mem.Allocator, folder_path: []const u8) !void {
-    var midi_buffer: [32768]u8 = undefined; // 32KB per track max
-
     for (0..project_mod.TRACK_COUNT) |track_idx| {
         const track: c_int = @intCast(track_idx);
 
@@ -328,11 +336,19 @@ fn loadMidiData(allocator: std.mem.Allocator, folder_path: []const u8) !void {
         };
         defer midi_file.close(sys.io());
 
-        // Read MIDI file
+        // Read MIDI file: the buffer is sized from the file, so no clip is cut.
         const stat = midi_file.stat(sys.io()) catch continue;
-        const file_size = @min(stat.size, midi_buffer.len);
+        if (stat.size == 0 or stat.size > MAX_MIDI_FILE_BYTES) {
+            if (stat.size != 0) log.warn("MIDI file {s} is too large ({} bytes)", .{ midi_path, stat.size });
+            continue;
+        }
+        const midi_buffer = allocator.alloc(u8, @intCast(stat.size)) catch |err| {
+            log.warn("Failed to allocate MIDI buffer for {s}: {}", .{ midi_path, err });
+            continue;
+        };
+        defer allocator.free(midi_buffer);
 
-        const bytes_read = midi_file.readPositionalAll(sys.io(), &midi_buffer, 0) catch |err| {
+        const bytes_read = midi_file.readPositionalAll(sys.io(), midi_buffer, 0) catch |err| {
             log.warn("Failed to read MIDI file {s}: {}", .{ midi_path, err });
             continue;
         };
@@ -340,7 +356,7 @@ fn loadMidiData(allocator: std.mem.Allocator, folder_path: []const u8) !void {
         if (bytes_read == 0) continue;
 
         // Deserialize MIDI data
-        const note_count = midi_clip_deserialize(track, &midi_buffer, @intCast(@min(bytes_read, file_size)));
+        const note_count = midi_clip_deserialize(track, midi_buffer.ptr, @intCast(bytes_read));
         if (note_count > 0) {
             log.info("Loaded {} MIDI notes for track {} from {s}", .{ note_count, track_idx, midi_path });
         }
@@ -684,4 +700,36 @@ test "physical model instruments round-trip through save and load" {
     }
     // Tracks without an instrument stay "none".
     try testing.expectEqual(@as(u8, 0), loaded.tracks[models.len].instrument_type);
+}
+
+test "save keeps a track whose MIDI exceeds 32 KB and reports a track that cannot be written" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    const track: c_int = 7;
+    const note_total: c_int = 2500; // 2500 * 19 bytes is well over 32 KB
+    midi_clip_clear(track);
+    defer midi_clip_clear(track);
+    var i: c_int = 0;
+    while (i < note_total) : (i += 1) {
+        try testing.expect(midi_clip_add_note(track, @as(f64, @floatFromInt(i)) * 0.25, 0.25, 60, 100) != 0);
+    }
+    try testing.expectEqual(note_total, midi_clip_get_note_count(track));
+
+    const dir = "persistence_bigmidi_tmp";
+    try sys.makePath(dir);
+    defer std.Io.Dir.cwd().deleteTree(sys.io(), dir) catch {};
+
+    const project = Project.init();
+    try saveProject(allocator, &project, dir);
+
+    midi_clip_clear(track);
+    _ = try loadProject(allocator, dir);
+    try testing.expectEqual(note_total, midi_clip_get_note_count(track));
+
+    // A track file that cannot be written must fail the save, not vanish.
+    const blocked = "persistence_blockedmidi_tmp";
+    try sys.makePath(blocked ++ "/midi_track7.bin");
+    defer std.Io.Dir.cwd().deleteTree(sys.io(), blocked) catch {};
+    try testing.expect(std.meta.isError(saveProject(allocator, &project, blocked)));
 }
