@@ -61,7 +61,7 @@ const play_usage = "seridian play";
 const stop_usage = "seridian stop";
 const bpm_usage = "seridian bpm <20..300>";
 const instruments_usage = "seridian instruments";
-const set_usage = "seridian set <track 1..8> gain <0..1.5> | pan <-1..1> | mute|solo|arm on|off | instrument NAME (see `seridian instruments`)";
+const set_usage = "seridian set <track 1..8> gain <0..1.5> | pan <-1..1> | mute|solo|arm on|off | reverb on|off | reverb wet <0..1> | instrument NAME (see `seridian instruments`)";
 const note_usage = "seridian note <track 1..8> <pitch 0..127> <start >=0> <length >0> [velocity 1..127]";
 const clear_usage = "seridian clear <track 1..8>";
 const auto_usage = "seridian auto <track 1..8> gain <beat >=0> <0..1> | pan <beat> <-1..1> | wet <beat> <0..1>; auto master gain <beat> <0..1>; auto clear <track> gain|pan|wet";
@@ -163,7 +163,7 @@ const commands = [_]Command{
     .{ .name = "stop", .summary = "Stop playback in the running app", .usage = stop_usage, .run = cmdStop },
     .{ .name = "bpm", .summary = "Set the tempo (20..300)", .usage = bpm_usage, .run = cmdBpm },
     .{ .name = "instruments", .summary = "List the instrument names `set N instrument` accepts, one per line", .usage = instruments_usage, .run = cmdInstruments },
-    .{ .name = "set", .summary = "Set a track's gain, pan, mute, solo or arm", .usage = set_usage, .run = cmdSet },
+    .{ .name = "set", .summary = "Set a track's gain, pan, mute, solo, arm, reverb or instrument", .usage = set_usage, .run = cmdSet },
     .{ .name = "note", .summary = "Add a note: track, pitch, start beat, length in beats, optional velocity", .usage = note_usage, .run = cmdNote },
     .{ .name = "clear", .summary = "Remove all notes on a track", .usage = clear_usage, .run = cmdClear },
     .{ .name = "auto", .summary = "Add an automation point (gain, pan, reverb wet, master gain) or clear a lane", .usage = auto_usage, .run = cmdAuto },
@@ -856,9 +856,19 @@ fn buildLine(buf: []u8, name: []const u8, args: []const []const u8) ArgError![]c
         return std.fmt.bufPrint(buf, "{s} {s}", .{ name, path }) catch too_long;
     }
     if (std.mem.eql(u8, name, "set")) {
+        if (args.len == 4 and std.mem.eql(u8, args[1], "reverb")) {
+            const track = try parseIntIn(args[0], 1, max_track);
+            if (!std.mem.eql(u8, args[2], "wet")) return error.InvalidArgs;
+            const v = try parseFloatIn(args[3], 0, 1);
+            return std.fmt.bufPrint(buf, "set {d} reverb wet {d}", .{ track, v }) catch too_long;
+        }
         if (args.len != 3) return error.InvalidArgs;
         const track = try parseIntIn(args[0], 1, max_track);
         const field = args[1];
+        if (std.mem.eql(u8, field, "reverb")) {
+            const on = try parseOnOff(args[2]);
+            return std.fmt.bufPrint(buf, "set {d} reverb {s}", .{ track, if (on) "on" else "off" }) catch too_long;
+        }
         if (std.mem.eql(u8, field, "gain")) {
             const v = try parseFloatIn(args[2], 0, 1.5);
             return std.fmt.bufPrint(buf, "set {d} gain {d}", .{ track, v }) catch too_long;
@@ -954,9 +964,16 @@ fn describeProblem(buf: []u8, name: []const u8, args: []const []const u8) []cons
         return intProblem(buf, "track", args[0], 1, max_track) orelse fallback;
     }
     if (eql(u8, name, "set")) {
+        if (args.len == 4 and eql(u8, args[1], "reverb")) {
+            if (intProblem(buf, "track", args[0], 1, max_track)) |m| return m;
+            if (!eql(u8, args[2], "wet")) return given(buf, "reverb must be on, off or wet <0..1>", args[2]);
+            return floatProblem(buf, "reverb wet", args[3], 0, 1) orelse fallback;
+        }
+        if (args.len == 2 and eql(u8, args[1], "reverb")) return "reverb needs on, off or wet <0..1>";
         if (args.len != 3) return countProblem(buf, "set takes 3 arguments", args.len);
         if (intProblem(buf, "track", args[0], 1, max_track)) |m| return m;
         const field = args[1];
+        if (eql(u8, field, "reverb")) return given(buf, "reverb must be on, off or wet <0..1>", args[2]);
         if (eql(u8, field, "gain")) return floatProblem(buf, "gain", args[2], 0, 1.5) orelse fallback;
         if (eql(u8, field, "pan")) return floatProblem(buf, "pan", args[2], -1, 1) orelse fallback;
         if (eql(u8, field, "mute") or eql(u8, field, "solo") or eql(u8, field, "arm")) {
@@ -968,7 +985,7 @@ fn describeProblem(buf: []u8, name: []const u8, args: []const []const u8) []cons
             const all = instrument_types.joinNames(&names, ", ") orelse return fallback;
             return std.fmt.bufPrint(buf, "unknown instrument '{s}'; use one of: {s}", .{ args[2], all }) catch fallback;
         }
-        return std.fmt.bufPrint(buf, "unknown setting '{s}'; use gain, pan, mute, solo, arm or instrument", .{field}) catch fallback;
+        return std.fmt.bufPrint(buf, "unknown setting '{s}'; use gain, pan, mute, solo, arm, reverb or instrument", .{field}) catch fallback;
     }
     if (eql(u8, name, "eq")) {
         if (args.len != 3) return countProblem(buf, "eq takes 3 arguments", args.len);
@@ -1600,7 +1617,7 @@ test "describeProblem covers tempo, set, eq, auto and clear" {
     try expectProblem("gain must be a number 0..1.5, got '99'", "set", &.{ "1", "gain", "99" });
     try expectProblem("pan must be a number -1..1, got '2'", "set", &.{ "1", "pan", "2" });
     try expectProblem("mute must be on or off, got 'maybe'", "set", &.{ "1", "mute", "maybe" });
-    try expectProblem("unknown setting 'colour'; use gain, pan, mute, solo, arm or instrument", "set", &.{ "1", "colour", "3" });
+    try expectProblem("unknown setting 'colour'; use gain, pan, mute, solo, arm, reverb or instrument", "set", &.{ "1", "colour", "3" });
     try expectProblem("unknown preset 'nope'; use drums, bass, pads, lead or harp", "eq", &.{ "1", "preset", "nope" });
     try expectProblem("track must be a whole number 1..8, got '0'", "clear", &.{"0"});
     try expectProblem("lane must be gain, pan or wet, got 'volume'", "auto", &.{ "1", "volume", "0", "0.5" });
@@ -1646,4 +1663,27 @@ test "describeProblem lists every valid instrument for an unknown one" {
     const want = try std.fmt.bufPrint(&want_buf, "unknown instrument 'Nope'; use one of: {s}", .{all});
     var got_buf: [700]u8 = undefined;
     try std.testing.expectEqualStrings(want, describeProblem(&got_buf, "set", &.{ "1", "instrument", "Nope" }));
+}
+
+test "set reverb: on, off and wet" {
+    try expectLine("set 1 reverb on", "set", &.{ "1", "reverb", "on" });
+    try expectLine("set 8 reverb off", "set", &.{ "8", "reverb", "off" });
+    try expectLine("set 2 reverb wet 0.35", "set", &.{ "2", "reverb", "wet", "0.35" });
+    try expectLine("set 2 reverb wet 0", "set", &.{ "2", "reverb", "wet", "0" });
+    try expectLine("set 2 reverb wet 1", "set", &.{ "2", "reverb", "wet", "1" });
+    try expectRejected("set", &.{ "1", "reverb", "maybe" });
+    try expectRejected("set", &.{ "1", "reverb" });
+    try expectRejected("set", &.{ "1", "reverb", "wet" });
+    try expectRejected("set", &.{ "1", "reverb", "wet", "1.1" });
+    try expectRejected("set", &.{ "1", "reverb", "wet", "-0.1" });
+    try expectRejected("set", &.{ "1", "reverb", "wet", "nan" });
+    try expectRejected("set", &.{ "1", "reverb", "dry", "0.5" });
+    try expectRejected("set", &.{ "9", "reverb", "on" });
+    try expectRejected("set", &.{ "1", "gain", "wet", "0.5" });
+}
+
+test "describeProblem explains reverb arguments" {
+    try expectProblem("reverb must be on, off or wet <0..1>, got 'maybe'", "set", &.{ "1", "reverb", "maybe" });
+    try expectProblem("reverb wet must be a number 0..1, got '1.1'", "set", &.{ "1", "reverb", "wet", "1.1" });
+    try expectProblem("reverb needs on, off or wet <0..1>", "set", &.{ "1", "reverb" });
 }

@@ -36,6 +36,9 @@ pub const UiTrackState = extern struct {
     soloed: c_int,
     armed: c_int,
     midi_notes: c_int,
+    /// 1 when the track has a reverb; `reverb_wet` is its wet amount 0..1 (0 without a reverb).
+    reverb: c_int,
+    reverb_wet: f32,
 };
 
 /// One note of the piano roll track, as stored in the engine clip.
@@ -135,6 +138,7 @@ fn cursor_put_track(cursor: *Cursor, track: *const UiTrackState, index: c_int) v
     cursor_printf(cursor, ",\"midi_notes\":%d", .{track.midi_notes});
     cursor_put(cursor, ",\"instrument\":");
     cursor_put_json_string(cursor, &track.instrument);
+    cursor_printf(cursor, ",\"reverb\":{\"present\":%s,\"wet\":%.3f}", .{ yes_no(track.reverb), @as(f64, track.reverb_wet) });
     cursor_put(cursor, "}");
 }
 

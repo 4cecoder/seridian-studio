@@ -103,6 +103,32 @@ pub export fn audio_engine_track_has_reverb(engine: ?*anyopaque, track: c_int) c
     return if (eng.trackHasReverb(@intCast(track))) 1 else 0;
 }
 
+/// Adds (on != 0) or removes (on == 0) the track's reverb. Returns 0, -1 for a bad track or engine, -2 when
+/// the track's effects chain is full.
+pub export fn audio_engine_set_track_reverb(engine: ?*anyopaque, track: c_int, on: c_int) callconv(.c) c_int {
+    const eng = castEngine(engine) orelse return -1;
+    if (track < 0) return -1;
+    eng.setTrackReverb(@intCast(track), on != 0) catch |err| switch (err) {
+        error.InvalidTrackIndex => return -1,
+        else => return -2,
+    };
+    return 0;
+}
+
+/// The track reverb's wet amount 0..1, or -1 when the track has no reverb.
+pub export fn audio_engine_get_track_reverb_wet(engine: ?*anyopaque, track: c_int) callconv(.c) f32 {
+    const eng = castEngine(engine) orelse return -1.0;
+    if (track < 0) return -1.0;
+    return eng.trackReverbWet(@intCast(track)) orelse -1.0;
+}
+
+/// Sets the track reverb's wet amount. Returns 0, or -1 when the track has no reverb.
+pub export fn audio_engine_set_track_reverb_wet(engine: ?*anyopaque, track: c_int, wet: f32) callconv(.c) c_int {
+    const eng = castEngine(engine) orelse return -1;
+    if (track < 0) return -1;
+    return if (eng.setTrackReverbWet(@intCast(track), wet)) 0 else -1;
+}
+
 fn automationTarget(target: c_int) ?AudioEngine.AutomationTarget {
     return switch (target) {
         0 => .track_gain,

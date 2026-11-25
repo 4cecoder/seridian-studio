@@ -166,12 +166,14 @@ fn unknown_instrument_message() [*c]const u8 {
 
 pub fn control_set(argv: [*c][*c]u8, argc: c_int) [*c]const u8 {
     var track: c_int = 0;
-    if (argc != 4) return "usage: set <track> gain|pan|mute|solo|arm <value>";
+    const usage: [*c]const u8 = "usage: set <track> gain|pan|mute|solo|arm|reverb|instrument <value> | set <track> reverb wet <0..1>";
+    if (argc != 4 and argc != 5) return usage;
     if (control_parse_track(argv[1], &track) == 0) return "track must be 1..8";
     const field: [*c]const u8 = argv[2];
     const value: [*c]const u8 = argv[3];
     var number: f64 = 0.0;
     var on: c_int = 0;
+    if (argc == 5 and !(libc.strcmp(field, "reverb") == 0 and libc.strcmp(value, "wet") == 0)) return usage;
     if (libc.strcmp(field, "gain") == 0) {
         if (control_parse_double(value, 0.0, st.CONTROL_GAIN_MAX, &number) == 0) return "gain must be 0..1.5";
         ext.audio_engine_set_track_gain(app.engine, track, @floatCast(number));
@@ -188,12 +190,24 @@ pub fn control_set(argv: [*c][*c]u8, argc: c_int) [*c]const u8 {
         } else {
             ext.audio_engine_set_track_arm(app.engine, track, on);
         }
+    } else if (libc.strcmp(field, "reverb") == 0) {
+        if (argc == 5) {
+            if (control_parse_double(argv[4], 0.0, 1.0, &number) == 0) return "reverb wet must be 0..1";
+            if (ext.audio_engine_set_track_reverb_wet(app.engine, track, @floatCast(number)) != 0) {
+                return "that track has no reverb; run set <track> reverb on first";
+            }
+        } else {
+            if (control_parse_switch(value, &on) == 0) return "reverb must be on, off or wet <0..1>";
+            const result = ext.audio_engine_set_track_reverb(app.engine, track, on);
+            if (result == -2) return "that track's effects chain is full";
+            if (result != 0) return "could not change the reverb";
+        }
     } else if (libc.strcmp(field, "instrument") == 0) {
         const type_ = ext.audio_engine_find_instrument_type(value);
         if (type_ < 0) return unknown_instrument_message();
         if (ext.audio_engine_set_track_instrument(app.engine, track, type_) != 0) return "could not set the instrument";
     } else {
-        return "field must be gain, pan, mute, solo, arm or instrument";
+        return "field must be gain, pan, mute, solo, arm, reverb or instrument";
     }
     fns.mixer_sync_all();
     return null;

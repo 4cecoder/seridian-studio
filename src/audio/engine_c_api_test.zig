@@ -266,6 +266,25 @@ test "C API - instrument names round-trip: what set accepts is what state report
     try testing.expectEqual(@as(c_int, -1), capi.audio_engine_find_instrument_type(""));
 }
 
+test "C API - track reverb on, wet and off" {
+    const testing = std.testing;
+    var engine = try newNoneEngine(testing.allocator);
+    defer engine.deinit();
+    const engine_ptr: *anyopaque = @ptrCast(&engine);
+
+    try testing.expectEqual(@as(c_int, 0), capi.audio_engine_track_has_reverb(engine_ptr, 3));
+    try testing.expect(capi.audio_engine_get_track_reverb_wet(engine_ptr, 3) < 0.0);
+    try testing.expectEqual(@as(c_int, -1), capi.audio_engine_set_track_reverb_wet(engine_ptr, 3, 0.4));
+    try testing.expectEqual(@as(c_int, 0), capi.audio_engine_set_track_reverb(engine_ptr, 3, 1));
+    try testing.expectEqual(@as(c_int, 1), capi.audio_engine_track_has_reverb(engine_ptr, 3));
+    try testing.expectEqual(@as(c_int, 0), capi.audio_engine_set_track_reverb_wet(engine_ptr, 3, 0.4));
+    try testing.expectApproxEqAbs(@as(f32, 0.4), capi.audio_engine_get_track_reverb_wet(engine_ptr, 3), 0.001);
+    try testing.expectEqual(@as(c_int, 0), capi.audio_engine_set_track_reverb(engine_ptr, 3, 0));
+    try testing.expectEqual(@as(c_int, 0), capi.audio_engine_track_has_reverb(engine_ptr, 3));
+    try testing.expectEqual(@as(c_int, -1), capi.audio_engine_set_track_reverb(engine_ptr, 99, 1));
+    try testing.expectEqual(@as(c_int, -1), capi.audio_engine_set_track_reverb(engine_ptr, -1, 1));
+}
+
 fn peakOf(buf: []const f32) f32 {
     var peak: f32 = 0.0;
     for (buf) |s| peak = @max(peak, @abs(s));

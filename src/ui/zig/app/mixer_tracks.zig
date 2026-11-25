@@ -319,6 +319,9 @@ pub fn write_state_snapshot() void {
         out.soloed = if (ext.audio_engine_get_track_solo(app.engine, track) != 0) 1 else 0;
         out.armed = if (ext.audio_engine_get_track_arm(app.engine, track) != 0) 1 else 0;
         out.midi_notes = ext.midi_clip_get_note_count(track);
+        const reverb_wet = ext.audio_engine_get_track_reverb_wet(app.engine, track);
+        out.reverb = if (reverb_wet >= 0.0) 1 else 0;
+        out.reverb_wet = if (reverb_wet >= 0.0) reverb_wet else 0.0;
         if (app.mixers[st.MIXER_VIEW_DOCK].pan_knobs[@intCast(track)] != raven.R_INVALID_ID) {
             var knob_x: f32 = 0.0;
             var knob_y: f32 = 0.0;

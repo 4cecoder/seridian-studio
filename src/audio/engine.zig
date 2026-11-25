@@ -1031,6 +1031,40 @@ pub const AudioEngine = struct {
         return self.trackReverb(track) != null;
     }
 
+    /// The track reverb's wet amount, or null when the track has no reverb.
+    pub fn trackReverbWet(self: *AudioEngine, track: usize) ?f32 {
+        if (track >= TRACK_COUNT) return null;
+        const reverb = self.trackReverb(track) orelse return null;
+        const param = reverb.getParameter(REVERB_WET_PARAM) orelse return null;
+        return param.value;
+    }
+
+    /// Sets the track reverb's wet amount (clamped to 0..1). False when the track has no reverb.
+    pub fn setTrackReverbWet(self: *AudioEngine, track: usize, wet: f32) bool {
+        if (track >= TRACK_COUNT) return false;
+        const reverb = self.trackReverb(track) orelse return false;
+        reverb.setParameter(REVERB_WET_PARAM, std.math.clamp(wet, 0.0, 1.0));
+        return true;
+    }
+
+    /// Adds a reverb to the track (one at most) or removes it. Adding fails when the chain is full.
+    pub fn setTrackReverb(self: *AudioEngine, track: usize, on: bool) !void {
+        if (track >= TRACK_COUNT) return error.InvalidTrackIndex;
+        const chain = &self.track_effects[track];
+        var slot: ?usize = null;
+        for (0..chain.count) |i| {
+            if (chain.slots[i].effect_type == .reverb) {
+                slot = i;
+                break;
+            }
+        }
+        if (on) {
+            if (slot == null) _ = try chain.addEffect(.reverb);
+        } else if (slot) |index| {
+            chain.removeEffect(index);
+        }
+    }
+
     // Mute/Solo controls
     pub fn setTrackMute(self: *AudioEngine, track: usize, muted: bool) void {
         if (track >= TRACK_COUNT) return;
@@ -1863,6 +1897,31 @@ test "AudioEngine - pan automation moves the signal to one side" {
     // Full left at beat 0: right channel silent, left at the track gain.
     try testing.expectApproxEqAbs(@as(f32, 0.5), output[0], 0.01);
     try testing.expectApproxEqAbs(@as(f32, 0.0), output[1], 0.01);
+}
+
+test "AudioEngine - a track reverb can be added, set and removed from control code" {
+    const testing = std.testing;
+    var engine = try initAutomationEngine(testing.allocator);
+    defer engine.deinit();
+
+    try testing.expectEqual(@as(?f32, null), engine.trackReverbWet(0));
+    try testing.expect(!engine.setTrackReverbWet(0, 0.5));
+    try engine.setTrackReverb(0, true);
+    try testing.expect(engine.trackHasReverb(0));
+    try testing.expect(!engine.trackHasReverb(1));
+    // Turning it on twice keeps one reverb.
+    try engine.setTrackReverb(0, true);
+    try testing.expectEqual(@as(usize, 1), engine.track_effects[0].count);
+    try testing.expect(engine.setTrackReverbWet(0, 0.65));
+    try testing.expectApproxEqAbs(@as(f32, 0.65), engine.trackReverbWet(0).?, 0.001);
+    try testing.expect(engine.setTrackReverbWet(0, 7.0));
+    try testing.expectApproxEqAbs(@as(f32, 1.0), engine.trackReverbWet(0).?, 0.001);
+    try engine.setTrackReverb(0, false);
+    try testing.expect(!engine.trackHasReverb(0));
+    try testing.expectEqual(@as(usize, 0), engine.track_effects[0].count);
+    // Turning it off when there is none is fine.
+    try engine.setTrackReverb(0, false);
+    try testing.expectError(error.InvalidTrackIndex, engine.setTrackReverb(AudioEngine.TRACK_COUNT, true));
 }
 
 test "AudioEngine - reverb wet automation applies while playing and restores when stopped" {

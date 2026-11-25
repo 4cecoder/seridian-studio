@@ -6,7 +6,7 @@
 # kills only the pid it started.
 #
 # Usage: tests/e2e/control_regressions.sh [test-name ...]
-#   tests: open_restores_bpm_and_master, relative_paths_are_absolute, one_command_per_request, single_instance, instruments_round_trip
+#   tests: open_restores_bpm_and_master, relative_paths_are_absolute, one_command_per_request, single_instance, instruments_round_trip, reverb_from_the_cli
 # Requires: zig-out/bin/seridian and zig-out/bin/seridian-studio-headless
 #   (zig build -Dheadless=true), jq, python3. Exit code 0 when all selected tests pass.
 
@@ -223,7 +223,22 @@ test_instruments_round_trip() {
     [ "$missing" -eq 0 ] && pass "unknown-instrument error lists all names" || fail "unknown-instrument error misses $missing names (got $reply)"
 }
 
-ALL="open_restores_bpm_and_master relative_paths_are_absolute one_command_per_request single_instance instruments_round_trip"
+test_reverb_from_the_cli() {
+    echo "== reverb on, wet and off from the CLI; auto wet works afterwards (G1)"
+    local out got
+    out="$("$CLI" auto 1 wet 0 0.5 2>&1)" && fail "auto wet must fail before a reverb exists (got: $out)" || pass "auto wet refused without a reverb"
+    "$CLI" set 1 reverb on >/dev/null 2>&1 && pass "set 1 reverb on" || fail "set 1 reverb on"
+    got="$(wait_text '.tracks[0].reverb.present' true)" && pass "state reports the reverb present" || fail "state reports the reverb present (got $got)"
+    "$CLI" set 1 reverb wet 0.4 >/dev/null 2>&1 && pass "set 1 reverb wet 0.4" || fail "set 1 reverb wet 0.4"
+    got="$(wait_field '.tracks[0].reverb.wet' 0.4)" && pass "state reports wet 0.4" || fail "state reports wet 0.4 (got $got)"
+    [ "$(state_field '.tracks[1].reverb.present')" = "false" ] && pass "other tracks have no reverb" || fail "other tracks have no reverb"
+    "$CLI" auto 1 wet 0 0.1 >/dev/null 2>&1 && pass "auto 1 wet works without the UI" || fail "auto 1 wet works without the UI"
+    out="$("$CLI" set 2 reverb wet 0.4 2>&1)" && fail "wet without a reverb must fail (got: $out)" || pass "wet without a reverb refused: $out"
+    "$CLI" set 1 reverb off >/dev/null 2>&1 && pass "set 1 reverb off" || fail "set 1 reverb off"
+    got="$(wait_text '.tracks[0].reverb.present' false)" && pass "state reports the reverb gone" || fail "state reports the reverb gone (got $got)"
+}
+
+ALL="open_restores_bpm_and_master relative_paths_are_absolute one_command_per_request single_instance instruments_round_trip reverb_from_the_cli"
 SELECTED="${*:-$ALL}"
 for name in $SELECTED; do
     "test_$name"

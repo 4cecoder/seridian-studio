@@ -36,6 +36,8 @@ fn sampleState() UiState {
     setText(&state.tracks[1].instrument, "Wavetable");
     state.tracks[0].midi_notes = 3;
     state.tracks[1].midi_notes = 0;
+    state.tracks[1].reverb = 1;
+    state.tracks[1].reverb_wet = 0.3;
     setText(&state.audio.output_device, "alsa_output.\"x\"");
     state.audio.sample_rate = 48000;
     state.audio.buffer_size = 512;
@@ -68,6 +70,14 @@ test "format writes each track" {
     try expectContains(out.text, "\"armed\":true");
     try expectContains(out.text, "\"muted\":true");
     try expectContains(out.text, "\"instrument\":\"Wavetable\"");
+}
+
+test "format reports per track whether a reverb is present and its wet value" {
+    const state = sampleState();
+    var json: [ui_state.UI_STATE_JSON_CAPACITY]u8 = undefined;
+    const out = format(&state, &json);
+    try expectContains(out.text, "\"reverb\":{\"present\":false,\"wet\":0.000}");
+    try expectContains(out.text, "\"reverb\":{\"present\":true,\"wet\":0.300}");
 }
 
 test "format writes midi note count per track" {
