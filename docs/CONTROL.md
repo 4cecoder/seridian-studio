@@ -142,7 +142,7 @@ The CLI adds the offending value: `start must be a number of beats 0..1000000, g
 | `eq TRACK preset drums\|bass\|pads\|lead\|harp` | adds the preset EQ to the track's chain |
 | `eq master tilt on\|off` | master tilt EQ |
 
-BEAT is 0..1000000. A lane holds 128 points. Errors: `beat must be a number >= 0`, `value must be 0..1`,
+BEAT is 0..1000000. A lane holds 128 points. Errors: `beat must be a number of beats 0..1000000`, `value must be 0..1`,
 `pan must be -1..1`, `lane must be gain, pan or wet`, `that track has no reverb to automate`, `that lane is
 full`, `could not add the automation point`, `could not clear the lane`, `preset must be drums, bass, pads, lead
 or harp`, `that track's effects chain is full`, `the master effects chain is full`, plus the `usage:` lines

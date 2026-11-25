@@ -1026,10 +1026,19 @@ fn describeProblem(buf: []u8, name: []const u8, args: []const []const u8) []cons
         if (!eql(u8, args[1], "preset")) return "eq takes: <track> preset NAME, or master tilt on|off";
         return std.fmt.bufPrint(buf, "unknown preset '{s}'; use drums, bass, pads, lead or harp", .{args[2]}) catch fallback;
     }
+    if (eql(u8, name, "auto") and args.len == 4 and eql(u8, args[0], "master")) {
+        if (!eql(u8, args[1], "gain")) return "auto master takes: gain <beat> <value>";
+        if (parseFloatIn(args[2], 0, control_limits.max_beats)) |_| {} else |_| return given(buf, control_limits.beat_message, args[2]);
+        return floatProblem(buf, "value", args[3], 0, 1) orelse fallback;
+    }
+    if (eql(u8, name, "auto") and args.len == 3 and eql(u8, args[0], "clear")) {
+        if (intProblem(buf, "track", args[1], 1, max_track)) |m| return m;
+        return given(buf, "lane must be gain, pan or wet", args[2]);
+    }
     if (eql(u8, name, "auto") and args.len == 4 and !eql(u8, args[0], "master")) {
         if (intProblem(buf, "track", args[0], 1, max_track)) |m| return m;
         if (!isAutoLane(args[1])) return given(buf, "lane must be gain, pan or wet", args[1]);
-        if (floatProblem(buf, "beat", args[2], 0, control_limits.max_beats)) |m| return m;
+        if (parseFloatIn(args[2], 0, control_limits.max_beats)) |_| {} else |_| return given(buf, control_limits.beat_message, args[2]);
         const low: f64 = if (eql(u8, args[1], "pan")) -1 else 0;
         return floatProblem(buf, "value", args[3], low, 1) orelse fallback;
     }
@@ -1755,4 +1764,16 @@ test "set name: one to 24 printable characters" {
 test "describeProblem explains a bad track name" {
     try expectProblem("name must be 1 to 24 printable characters (letters, digits, punctuation, spaces) in at most 5 words", "set", &.{ "1", "name", "tab\there" });
     try expectProblem("name must be 1 to 24 printable characters (letters, digits, punctuation, spaces) in at most 5 words", "set", &.{ "1", "name" });
+}
+
+test "auto beat limit and message are the app's (B29)" {
+    try std.testing.expectEqualStrings("beat must be a number of beats 0..1000000", control_limits.beat_message);
+    try expectRejected("auto", &.{ "1", "gain", "1000001", "0.5" });
+    try expectLine("auto 1 gain 1000000 0.5", "auto", &.{ "1", "gain", "1000000", "0.5" });
+    try expectProblem("beat must be a number of beats 0..1000000, got '1000001'", "auto", &.{ "1", "gain", "1000001", "0.5" });
+    try expectProblem("beat must be a number of beats 0..1000000, got 'inf'", "auto", &.{ "2", "wet", "inf", "0.5" });
+    try expectProblem("beat must be a number of beats 0..1000000, got '1000001'", "auto", &.{ "master", "gain", "1000001", "0" });
+    try expectProblem("value must be a number 0..1, got '2'", "auto", &.{ "master", "gain", "0", "2" });
+    try expectProblem("auto master takes: gain <beat> <value>", "auto", &.{ "master", "pan", "0", "0" });
+    try expectProblem("lane must be gain, pan or wet, got 'mute'", "auto", &.{ "clear", "1", "mute" });
 }

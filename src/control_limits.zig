@@ -7,6 +7,9 @@ const track_name = @import("utils/track_name.zig");
 /// Largest note start, note length and automation beat, in beats.
 pub const max_beats: f64 = 1_000_000;
 
+/// Message for an automation beat outside 0..max_beats.
+pub const beat_message = std.fmt.comptimePrint("beat must be a number of beats 0..{d}", .{@as(u32, max_beats)});
+
 /// Message for a note start outside 0..max_beats.
 pub const start_message = std.fmt.comptimePrint("start must be a number of beats 0..{d}", .{@as(u32, max_beats)});
 

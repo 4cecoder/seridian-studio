@@ -6,7 +6,7 @@
 # kills only the pid it started.
 #
 # Usage: tests/e2e/control_regressions.sh [test-name ...]
-#   tests: open_restores_bpm_and_master, relative_paths_are_absolute, one_command_per_request, single_instance, instruments_round_trip, reverb_from_the_cli, transport_replies, note_limits_agree, file_errors_name_the_cause, state_is_fresh_after_a_command, track_names, effects_survive_save_and_open, open_validates_track_names
+#   tests: open_restores_bpm_and_master, relative_paths_are_absolute, one_command_per_request, single_instance, instruments_round_trip, reverb_from_the_cli, transport_replies, note_limits_agree, file_errors_name_the_cause, state_is_fresh_after_a_command, track_names, effects_survive_save_and_open, open_validates_track_names, auto_beat_limit
 # Requires: zig-out/bin/seridian and zig-out/bin/seridian-studio-headless
 #   (zig build -Dheadless=true), jq, python3. Exit code 0 when all selected tests pass.
 
@@ -400,7 +400,24 @@ PY
     [ "$names" = "Track 2,Track 3,Track 4,Fine Name" ] && pass "bad names fall back, good name kept: $names" || fail "names after open (got '$names')"
 }
 
-ALL="open_restores_bpm_and_master relative_paths_are_absolute one_command_per_request single_instance instruments_round_trip reverb_from_the_cli transport_replies note_limits_agree file_errors_name_the_cause state_is_fresh_after_a_command track_names effects_survive_save_and_open open_validates_track_names"
+test_auto_beat_limit() {
+    echo "== the CLI and the app agree on the automation beat limit and message (B29)"
+    local want="error: beat must be a number of beats 0..1000000" reply out
+    for beat in 1000001 inf nan -1; do
+        reply="$(raw_send "auto 1 gain $beat 0.5\\n")"
+        [ "$reply" = "$want" ] && pass "app rejects auto beat $beat" || fail "app rejects auto beat $beat (got '$reply')"
+    done
+    reply="$(raw_send 'auto master gain 1000001 0.5\n')"
+    [ "$reply" = "$want" ] && pass "app rejects master auto beat 1000001" || fail "app master auto beat (got '$reply')"
+    out="$("$CLI" auto 1 gain 1000001 0.5 2>&1 | head -1)"
+    [ "$out" = "$want, got '1000001'" ] && pass "CLI says the same: $out" || fail "CLI auto beat message (got '$out')"
+    out="$("$CLI" auto master gain 1000001 0.5 2>&1 | head -1)"
+    [ "$out" = "$want, got '1000001'" ] && pass "CLI master auto says the same" || fail "CLI master auto message (got '$out')"
+    [ "$(raw_send 'auto 1 gain 1000000 0.5\n')" = "ok" ] && pass "beat 1000000 is accepted" || fail "beat 1000000 is accepted"
+    "$CLI" auto clear 1 gain >/dev/null
+}
+
+ALL="open_restores_bpm_and_master relative_paths_are_absolute one_command_per_request single_instance instruments_round_trip reverb_from_the_cli transport_replies note_limits_agree file_errors_name_the_cause state_is_fresh_after_a_command track_names effects_survive_save_and_open open_validates_track_names auto_beat_limit"
 SELECTED="${*:-$ALL}"
 for name in $SELECTED; do
     "test_$name"

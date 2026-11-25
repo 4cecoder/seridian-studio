@@ -251,7 +251,7 @@ pub fn control_auto_field(field: [*c]const u8) c_int {
 pub fn control_auto_add(target: c_int, track: c_int, beat_text: [*c]const u8, value_text: [*c]const u8) [*c]const u8 {
     var beat: f64 = 0.0;
     var value: f64 = 0.0;
-    if (control_parse_double(beat_text, 0.0, control_limits.max_beats, &beat) == 0) return "beat must be a number >= 0";
+    if (control_parse_double(beat_text, 0.0, control_limits.max_beats, &beat) == 0) return control_limits.beat_message;
     const low: f64 = if (target == st.AUTO_TRACK_PAN) -1.0 else 0.0;
     if (control_parse_double(value_text, low, 1.0, &value) == 0) {
         return if (target == st.AUTO_TRACK_PAN) "pan must be -1..1" else "value must be 0..1";
