@@ -191,7 +191,7 @@ export fn project_get_track_volume(track: c_int) callconv(.c) f32 {
 export fn project_set_track_volume(track: c_int, volume: f32) callconv(.c) void {
     if (g_project) |project| {
         if (track >= 0 and track < project_mod.TRACK_COUNT) {
-            project.tracks[@intCast(track)].volume = std.math.clamp(volume, 0.0, 1.0);
+            project.tracks[@intCast(track)].volume = std.math.clamp(volume, 0.0, project_mod.MAX_TRACK_GAIN);
             project.markDirty();
         }
     }
@@ -512,4 +512,15 @@ test "track mixer state is stored through the C API" {
     try std.testing.expectEqual(@as(c_int, 1), project_get_track_armed(5));
     project_set_track_armed(5, 0);
     try std.testing.expectEqual(@as(c_int, 0), project_get_track_armed(5));
+}
+
+test "track gain above 1.0 is stored through the C API" {
+    var allocator: std.mem.Allocator = std.testing.allocator;
+    try std.testing.expectEqual(@as(c_int, 0), project_init(@ptrCast(&allocator)));
+    defer project_deinit();
+
+    project_set_track_volume(2, 1.5);
+    try std.testing.expectEqual(@as(f32, 1.5), project_get_track_volume(2));
+    project_set_track_volume(2, 3.0);
+    try std.testing.expectEqual(project_mod.MAX_TRACK_GAIN, project_get_track_volume(2));
 }

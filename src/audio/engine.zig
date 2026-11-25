@@ -14,6 +14,7 @@ const mastering_mod = @import("mastering.zig");
 const automation = @import("automation.zig");
 const Lane = automation.Lane;
 const Effect = effects.Effect;
+const MAX_TRACK_GAIN = @import("../project/project.zig").MAX_TRACK_GAIN;
 const note_ring = @import("../midi/note_ring.zig");
 const event_queue = @import("event_queue.zig");
 const LinearRamp = @import("../dsp/core.zig").LinearRamp;
@@ -937,7 +938,7 @@ pub const AudioEngine = struct {
     // Gain controls
     pub fn setTrackGain(self: *AudioEngine, track: usize, gain: f32) void {
         if (track >= TRACK_COUNT) return;
-        const clamped = @max(0.0, @min(1.0, gain));
+        const clamped = std.math.clamp(gain, 0.0, MAX_TRACK_GAIN);
         self.track_gains[track].store(clamped, .monotonic);
     }
 
@@ -1229,9 +1230,11 @@ test "AudioEngine - setTrackGain clamping" {
     var engine = try AudioEngine.init(testing.allocator, .{});
     defer engine.deinit();
 
-    // Test clamping to 0.0 - 1.0
+    // Gain up to 1.5 is kept as set (the CLI documents 0..1.5); beyond that it is clamped.
     engine.setTrackGain(0, 1.5);
-    try testing.expectApproxEqAbs(@as(f32, 1.0), engine.getTrackGain(0), 0.001);
+    try testing.expectApproxEqAbs(@as(f32, 1.5), engine.getTrackGain(0), 0.001);
+    engine.setTrackGain(0, 2.0);
+    try testing.expectApproxEqAbs(@as(f32, 1.5), engine.getTrackGain(0), 0.001);
 
     engine.setTrackGain(0, -0.5);
     try testing.expectApproxEqAbs(@as(f32, 0.0), engine.getTrackGain(0), 0.001);

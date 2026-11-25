@@ -17,6 +17,9 @@ const effects = @import("../effects/effects.zig");
 const log = std.log.scoped(.project);
 
 /// Maximum tracks (matches engine)
+/// Highest per-track gain; the `set N gain` command documents 0..1.5. The engine, the model and save files all use it.
+pub const MAX_TRACK_GAIN: f32 = 1.5;
+
 pub const TRACK_COUNT = 8;
 
 /// Maximum effects per chain

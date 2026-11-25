@@ -18,6 +18,7 @@ pub const EffectsChainState = project.EffectsChainState;
 pub const EffectState = project.EffectState;
 
 pub const TRACK_COUNT = project.TRACK_COUNT;
+pub const MAX_TRACK_GAIN = project.MAX_TRACK_GAIN;
 pub const MAX_EFFECTS = project.MAX_EFFECTS;
 pub const MAX_CLIPS = project.MAX_CLIPS;
 
