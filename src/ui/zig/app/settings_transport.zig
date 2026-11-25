@@ -367,7 +367,7 @@ pub fn build_transport() raven.Rid {
     _ = raven.Rwidget_add_child(transport, app.record_button);
     const split_button: raven.Rid = fns.make_fixed_button("✂  Split", 104.0, 44.0);
     raven.Rbutton_set_clicked_callback(split_button, &fns.on_split_button, null);
-    raven.Rwidget_set_tooltip(split_button, "Split the selected clip, or every clip under the playhead, at the playhead (S)");
+    raven.Rwidget_set_tooltip(split_button, "Split the selected clip, or every clip under the playhead, at the playhead (Ctrl+E, Cmd+E on macOS)");
     _ = raven.Rwidget_add_child(transport, split_button);
     _ = raven.Rwidget_add_child(bar, transport);
 

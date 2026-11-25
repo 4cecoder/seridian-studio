@@ -80,8 +80,7 @@ pub const bindings = [_]Binding{
     .{ .key = 'E', .cmd = true, .shift = true, .action = .file_export_wav },
     .{ .key = 'P', .cmd = true, .shift = true, .action = .popout_piano_roll },
     .{ .key = 'M', .cmd = true, .shift = true, .action = .popout_mixer },
-    // Plain keys kept from the original transport and timeline shortcuts.
-    .{ .key = 'S', .cmd = false, .shift = false, .action = .split_at_playhead },
+    // Plain keys kept from the original timeline shortcuts. Plain letters stay free for the computer-keyboard piano.
     .{ .key = key_equal, .cmd = false, .shift = false, .action = .zoom_in },
     .{ .key = key_minus, .cmd = false, .shift = false, .action = .zoom_out },
 };
@@ -535,4 +534,29 @@ test "exportText: NUL-terminates and rejects a buffer with no room for the NUL" 
     var tiny: [8]u8 = undefined;
     try testing.expectEqual(@as(c_int, -1), seridian_keymap_help(&tiny, tiny.len));
     try testing.expectEqual(@as(u8, 0), tiny[0]);
+}
+
+test "U5: plain S is unbound so the computer-keyboard note S (D) reaches the piano" {
+    try testing.expectEqual(Action.none, lookup('S', 0));
+    try testing.expect(keyToPitch('S', 60) >= 0);
+}
+
+test "U5: Ctrl+E (Ableton's split) still splits" {
+    try testing.expectEqual(Action.split_at_playhead, lookup('E', piano_math.modifier_ctrl));
+    try testing.expectEqual(Action.split_at_playhead, lookup('E', piano_math.modifier_super));
+}
+
+test "U5: no plain binding shadows a computer-keyboard piano key or the octave keys" {
+    for (bindings) |b| {
+        if (b.cmd or b.shift) continue;
+        try testing.expect(keyToPitch(b.key, 60) < 0);
+        try testing.expect(b.key != 'Z' and b.key != 'X');
+    }
+}
+
+test "help: split is listed once, as Ctrl+E" {
+    var buf: [help_capacity]u8 = undefined;
+    const text = try renderHelp(&buf, .linux_windows);
+    try testing.expect(std.mem.indexOf(u8, text, "Ctrl+E  Split at playhead\n") != null);
+    try testing.expect(std.mem.indexOf(u8, text, "\nS  Split") == null);
 }
