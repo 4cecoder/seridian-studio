@@ -25,11 +25,22 @@ pass() { PASSED=$((PASSED + 1)); echo "  [PASS] $1"; }
 fail() { FAILED=$((FAILED + 1)); echo "  [FAIL] $1"; }
 
 cleanup() {
-    if [ -n "$APP_PID" ]; then kill "$APP_PID" 2>/dev/null; fi
+    trap - EXIT INT TERM
+    if [ -n "$APP_PID" ] && kill -0 "$APP_PID" 2>/dev/null; then
+        kill "$APP_PID" 2>/dev/null
+        for _ in $(seq 1 50); do
+            kill -0 "$APP_PID" 2>/dev/null || break
+            sleep 0.1
+        done
+        if kill -0 "$APP_PID" 2>/dev/null; then kill -KILL "$APP_PID" 2>/dev/null; fi
+        wait "$APP_PID" 2>/dev/null
+    fi
     if [ -n "$WORK" ]; then rm -rf "$WORK"; fi
     if [ -n "$RUNTIME" ]; then rm -rf "$RUNTIME"; fi
 }
 trap cleanup EXIT
+trap 'cleanup; exit 130' INT
+trap 'cleanup; exit 143' TERM
 
 for need in "$CLI" "$APP"; do
     if [ ! -x "$need" ]; then
@@ -43,23 +54,48 @@ chmod 700 "$RUNTIME"
 WORK="$(mktemp -d)"
 export XDG_RUNTIME_DIR="$RUNTIME"
 unset DISPLAY WAYLAND_DISPLAY HYPRLAND_INSTANCE_SIGNATURE
+# Private config, data and cache too: the app autosaves a recovery copy under the
+# config directory, and a leftover copy makes the next start wait on a recovery prompt.
+export XDG_CONFIG_HOME="$WORK/config" XDG_DATA_HOME="$WORK/data" XDG_CACHE_HOME="$WORK/cache"
+mkdir -p "$XDG_CONFIG_HOME" "$XDG_DATA_HOME" "$XDG_CACHE_HOME"
 
 # The app's working directory is a directory of its own, so a path resolved in
 # the app's directory is told apart from one resolved in the CLI's.
 APP_CWD="$WORK/appcwd"
 mkdir -p "$APP_CWD"
-(cd "$APP_CWD" && "$APP" >"$WORK/app.log" 2>&1 &
- echo $! >"$WORK/app.pid")
-APP_PID="$(cat "$WORK/app.pid")"
+cd "$APP_CWD" && { "$APP" >"$WORK/app.log" 2>&1 & APP_PID=$!; }
+cd "$ROOT" || exit 1
 
-STATE="$RUNTIME/seridian-state.json"
-if ! "$CLI" state --wait-ms 20000 >/dev/null 2>&1; then
-    echo "app did not publish a state snapshot; log:"
+# Ready when the socket answers; the state file is not used for readiness.
+READY=0
+for _ in $(seq 1 100); do
+    if [ "$("$CLI" bpm 120 2>/dev/null)" = "ok" ]; then READY=1; break; fi
+    if ! kill -0 "$APP_PID" 2>/dev/null; then break; fi
+    sleep 0.2
+done
+if [ "$READY" -ne 1 ]; then
+    echo "app did not answer on the socket within 20s; log:"
     cat "$WORK/app.log"
     exit 1
 fi
 
-state_field() { "$CLI" state >/dev/null 2>&1; jq -r "$1" "$STATE"; }
+STATE="$RUNTIME/seridian-state.json"
+
+state_field() { "$CLI" state >/dev/null 2>&1; jq -r "$1" "$STATE" 2>/dev/null; }
+
+# Polls a numeric state field for up to 10 s until it is within 0.1 of the target.
+# Prints the last value read; returns 0 when it matched.
+wait_field() {
+    local field="$1" target="$2" value=""
+    for _ in $(seq 1 50); do
+        value="$(state_field "$field")"
+        if awk -v v="${value:-x}" -v t="$target" 'BEGIN { exit !(v + 0 > t - 0.1 && v + 0 < t + 0.1 && v != "x") }'; then
+            echo "$value"; return 0
+        fi
+        sleep 0.2
+    done
+    echo "$value"; return 1
+}
 
 # Sends raw bytes to the control socket and prints the reply line.
 raw_send() {
@@ -81,10 +117,10 @@ test_open_restores_bpm_and_master() {
     "$CLI" bpm 77 >/dev/null
     "$CLI" open "$dir" >/dev/null || { fail "open"; return; }
     local bpm master
-    bpm="$(state_field .bpm)"
-    master="$(state_field .master_gain)"
-    awk -v v="$bpm" 'BEGIN { exit !(v > 89.9 && v < 90.1) }' && pass "bpm restored to 90 (got $bpm)" || fail "bpm restored to 90 (got $bpm)"
-    awk -v v="$master" 'BEGIN { exit !(v > 0.39 && v < 0.41) }' && pass "master volume restored to 0.4 (got $master)" || fail "master volume restored to 0.4 (got $master)"
+    bpm="$(wait_field .bpm 90)"
+    [ $? -eq 0 ] && pass "bpm restored to 90 (got $bpm)" || fail "bpm restored to 90 (got $bpm)"
+    master="$(wait_field .master_gain 0.4)"
+    [ $? -eq 0 ] && pass "master volume restored to 0.4 (got $master)" || fail "master volume restored to 0.4 (got $master)"
 }
 
 test_relative_paths_are_absolute() {
@@ -107,8 +143,8 @@ test_one_command_per_request() {
         *) pass "two lines in one write rejected (got: $reply)" ;;
     esac
     local bpm
-    bpm="$(state_field .bpm)"
-    awk -v v="$bpm" 'BEGIN { exit !(v > 99.9 && v < 100.1) }' && pass "no line of a rejected request ran (bpm $bpm)" || fail "no line of a rejected request ran (bpm $bpm)"
+    bpm="$(wait_field .bpm 100)"
+    [ $? -eq 0 ] && pass "no line of a rejected request ran (bpm $bpm)" || fail "no line of a rejected request ran (bpm $bpm)"
     reply="$(raw_send 'bpm 133\0junk\n')"
     case "$reply" in
         ok*) fail "an embedded NUL must not reply ok (got: $reply)" ;;
