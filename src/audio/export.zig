@@ -8,6 +8,7 @@ const wav = @import("wav.zig");
 const AudioEngine = @import("engine.zig").AudioEngine;
 const midi_clip = @import("../midi/midi_clip.zig");
 const sys = @import("../utils/sys.zig");
+const file_error = @import("../utils/file_error.zig");
 
 const log = std.log.scoped(.audio_export);
 
@@ -208,7 +209,8 @@ export fn audio_export_wav(
     };
 
     const frames = exportToWav(engine, path, config) catch |err| {
-        log.err("Export failed: {}", .{err});
+        log.warn("Export failed: {}", .{err});
+        file_error.record(err);
         return -1;
     };
 
@@ -401,4 +403,13 @@ test "project duration includes MIDI note end times" {
 
     // 2 beats at 120 BPM = 1 second
     try testing.expectApproxEqAbs(@as(f64, 1.0), getProjectDuration(&engine), 1e-9);
+}
+
+test "a failed export leaves its cause for the control socket" {
+    const testing = std.testing;
+    var engine = try AudioEngine.init(testing.allocator, .{ .sample_rate = 48000, .buffer_size = 512 });
+    defer engine.deinit();
+    // /proc/version is a file, so nothing can be created below it.
+    try testing.expectEqual(@as(c_int, -1), audio_export_wav(@ptrCast(&engine), "/proc/version/out.wav", 0.01, 16));
+    try testing.expectEqualStrings("not a directory", std.mem.span(file_error.lastCause()));
 }

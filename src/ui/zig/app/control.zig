@@ -289,12 +289,38 @@ pub fn control_check_path(argv: [*c][*c]u8, argc: c_int, usage: [*c]const u8) [*
     return null;
 }
 
+var file_error_text: [CONTROL_ERROR_CAPACITY]u8 = undefined;
+
+/// "<what> <path>: <cause>" in a buffer that lives until the reply is sent. `what` is e.g. "could not open the session".
+fn file_problem(what: [*c]const u8, path: [*c]const u8, cause: [*c]const u8) [*c]const u8 {
+    _ = libc.snprintf(&file_error_text, file_error_text.len, "%s %s: %s", what, path, cause);
+    return &file_error_text;
+}
+
+var errno_cause: [64]u8 = undefined;
+
+/// The text of the last failed system call (errno) in lower case, "permission denied"; "not a directory" when
+/// errno is 0 (the path exists but is not a folder).
+fn errno_text() [*c]const u8 {
+    const code = libc.errno();
+    if (code == 0) return "not a directory";
+    _ = libc.snprintf(&errno_cause, errno_cause.len, "%s", libc.strerror(code));
+    if (errno_cause[0] >= 'A' and errno_cause[0] <= 'Z') errno_cause[0] += 'a' - 'A';
+    return &errno_cause;
+}
+
+/// The cause the engine library left for its last failed save, open or export.
+fn engine_cause() [*c]const u8 {
+    const cause: [*c]const u8 = ext.project_last_error();
+    return if (cause != null and cause[0] != 0) cause else "unknown cause";
+}
+
 pub fn control_save(argv: [*c][*c]u8, argc: c_int) [*c]const u8 {
     const problem = control_check_path(argv, argc, "usage: save <path>");
     if (problem != null) return problem;
-    if (fns.make_directory_tree(argv[1]) != 0) return "could not create the folder";
+    if (fns.make_directory_tree(argv[1]) != 0) return file_problem("could not create the folder", argv[1], errno_text());
     fns.project_capture_mixer();
-    if (ext.project_save_as(argv[1]) != 0) return "could not save the session";
+    if (ext.project_save_as(argv[1]) != 0) return file_problem("could not save the session to", argv[1], engine_cause());
     fns.update_project_title();
     fns.set_status("Session saved from the command socket");
     return null;
@@ -303,7 +329,7 @@ pub fn control_save(argv: [*c][*c]u8, argc: c_int) [*c]const u8 {
 pub fn control_open_session(argv: [*c][*c]u8, argc: c_int) [*c]const u8 {
     const problem = control_check_path(argv, argc, "usage: open <path>");
     if (problem != null) return problem;
-    if (fns.open_session_folder(argv[1]) != 0) return "could not open the session";
+    if (fns.open_session_folder(argv[1]) != 0) return file_problem("could not open the session", argv[1], engine_cause());
     fns.set_status("Session opened from the command socket");
     return null;
 }
@@ -312,7 +338,7 @@ pub fn control_export(argv: [*c][*c]u8, argc: c_int) [*c]const u8 {
     const problem = control_check_path(argv, argc, "usage: export <path>");
     if (problem != null) return problem;
     if (ext.audio_engine_is_playing(app.engine) != 0) return "stop playback before exporting";
-    if (ext.audio_export_wav(app.engine, argv[1], 0.0, 16) != 0) return "could not export the WAV";
+    if (ext.audio_export_wav(app.engine, argv[1], 0.0, 16) != 0) return file_problem("could not export the WAV to", argv[1], engine_cause());
     _ = libc.snprintf(&st.control_ok_detail, st.control_ok_detail.len, "peak %.3f", @as(f64, ext.audio_export_last_peak()));
     fns.set_status("WAV exported from the command socket");
     return null;

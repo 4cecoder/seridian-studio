@@ -6,7 +6,7 @@
 # kills only the pid it started.
 #
 # Usage: tests/e2e/control_regressions.sh [test-name ...]
-#   tests: open_restores_bpm_and_master, relative_paths_are_absolute, one_command_per_request, single_instance, instruments_round_trip, reverb_from_the_cli, transport_replies, note_limits_agree
+#   tests: open_restores_bpm_and_master, relative_paths_are_absolute, one_command_per_request, single_instance, instruments_round_trip, reverb_from_the_cli, transport_replies, note_limits_agree, file_errors_name_the_cause
 # Requires: zig-out/bin/seridian and zig-out/bin/seridian-studio-headless
 #   (zig build -Dheadless=true), jq, python3. Exit code 0 when all selected tests pass.
 
@@ -271,7 +271,19 @@ test_note_limits_agree() {
     "$CLI" clear 1 >/dev/null 2>&1; "$CLI" clear 2 >/dev/null 2>&1
 }
 
-ALL="open_restores_bpm_and_master relative_paths_are_absolute one_command_per_request single_instance instruments_round_trip reverb_from_the_cli transport_replies note_limits_agree"
+test_file_errors_name_the_cause() {
+    echo "== save, open and export failures name the path and the cause (B6)"
+    expect_error "save /usr/seridian-e2e/x" "error: could not create the folder /usr/seridian-e2e/x: permission denied" "$("$CLI" save /usr/seridian-e2e/x 2>&1)"
+    expect_error "save under a file" "error: could not create the folder /proc/version/x: not a directory" "$("$CLI" save /proc/version/x 2>&1)"
+    expect_error "open a missing folder" "error: could not open the session /nonexistent-e2e: no project.daw in that folder" "$("$CLI" open /nonexistent-e2e 2>&1)"
+    expect_error "export under a file" "error: could not export the WAV to /proc/version/out.wav: not a directory" "$("$CLI" export /proc/version/out.wav 2>&1)"
+}
+
+expect_error() {
+    if [ "$3" = "$2" ]; then pass "$1: $3"; else fail "$1 (want '$2', got '$3')"; fi
+}
+
+ALL="open_restores_bpm_and_master relative_paths_are_absolute one_command_per_request single_instance instruments_round_trip reverb_from_the_cli transport_replies note_limits_agree file_errors_name_the_cause"
 SELECTED="${*:-$ALL}"
 for name in $SELECTED; do
     "test_$name"

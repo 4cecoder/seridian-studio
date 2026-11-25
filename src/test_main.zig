@@ -47,6 +47,7 @@ pub const project = @import("project/project.zig");
 pub const persistence = @import("project/persistence.zig");
 pub const persistence_test = @import("project/persistence_integration_test.zig");
 pub const recovery = @import("project/recovery.zig");
+pub const project_c_api = @import("project/project_c_api.zig");
 
 // Audio & C API
 pub const audio_engine = @import("audio/engine.zig");
@@ -57,6 +58,7 @@ pub const rt_safe_test = @import("audio/rt_safe_test.zig");
 pub const track_input_test = @import("audio/track_input_test.zig");
 
 // System preflight (`seridian doctor`); ported from feat/overhaul 4914565
+pub const file_error = @import("utils/file_error.zig");
 pub const desktop = @import("system/desktop.zig");
 pub const preflight = @import("system/preflight.zig");
 pub const preflight_types = @import("system/preflight_types.zig");

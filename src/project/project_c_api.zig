@@ -7,6 +7,7 @@ const sys = @import("../utils/sys.zig");
 const project_mod = @import("project_mod.zig");
 const Project = project_mod.Project;
 const persistence = project_mod.persistence;
+const file_error = @import("../utils/file_error.zig");
 
 const log = std.log.scoped(.project_c_api);
 
@@ -137,6 +138,11 @@ export fn project_set_master_volume(volume: f32) callconv(.c) void {
         project.header.master_volume = std.math.clamp(volume, 0.0, 1.0);
         project.markDirty();
     }
+}
+
+/// Why the last save, open or export failed ("permission denied", ...), or "" when none has.
+pub export fn project_last_error() callconv(.c) [*:0]const u8 {
+    return file_error.lastCause();
 }
 
 /// Check if project has unsaved changes
@@ -341,7 +347,8 @@ export fn project_save(folder_path_ptr: ?[*:0]const u8) callconv(.c) c_int {
 
     // Save project
     persistence.saveProject(allocator, project, path) catch |err| {
-        log.err("Failed to save project: {}", .{err});
+        log.warn("Failed to save project: {}", .{err});
+        file_error.record(err);
         return -1;
     };
 
@@ -362,7 +369,8 @@ export fn project_save_as(folder_path: [*:0]const u8) callconv(.c) c_int {
 
     // Create folder structure
     sys.makePath(path) catch |err| {
-        log.err("Failed to create project folder: {}", .{err});
+        log.warn("Failed to create project folder: {}", .{err});
+        file_error.record(err);
         return -1;
     };
 
@@ -383,7 +391,7 @@ export fn project_save_as(folder_path: [*:0]const u8) callconv(.c) c_int {
 
     // Save project
     persistence.saveProject(allocator, project, path) catch |err| {
-        log.err("Failed to save project: {}", .{err});
+        log.warn("Failed to save project: {}", .{err});
         return -1;
     };
 
@@ -406,7 +414,8 @@ export fn project_load(folder_path: [*:0]const u8) callconv(.c) c_int {
 
     // Load project
     const loaded = persistence.loadProject(allocator, path) catch |err| {
-        log.err("Failed to load project: {}", .{err});
+        log.warn("Failed to load project: {}", .{err});
+        file_error.record(err);
         return -1;
     };
 
@@ -446,7 +455,7 @@ export fn project_save_copy(folder_path: [*:0]const u8) callconv(.c) c_int {
         return -1;
     };
     persistence.saveProject(allocator, project, path) catch |err| {
-        log.err("Failed to save project copy: {}", .{err});
+        log.warn("Failed to save project copy: {}", .{err});
         return -1;
     };
     return 0;
@@ -523,4 +532,17 @@ test "track gain above 1.0 is stored through the C API" {
     try std.testing.expectEqual(@as(f32, 1.5), project_get_track_volume(2));
     project_set_track_volume(2, 3.0);
     try std.testing.expectEqual(project_mod.MAX_TRACK_GAIN, project_get_track_volume(2));
+}
+
+test "a failed save or open leaves its cause for the control socket" {
+    var allocator: std.mem.Allocator = std.testing.allocator;
+    try std.testing.expectEqual(@as(c_int, 0), project_init(@ptrCast(&allocator)));
+    defer project_deinit();
+
+    // /proc/version is a file, so nothing can be created below it.
+    try std.testing.expectEqual(@as(c_int, -1), project_save_as("/proc/version/session"));
+    try std.testing.expectEqualStrings("not a directory", std.mem.span(project_last_error()));
+
+    try std.testing.expectEqual(@as(c_int, -1), project_load("/nonexistent-seridian-folder"));
+    try std.testing.expectEqualStrings("no project.daw in that folder", std.mem.span(project_last_error()));
 }
