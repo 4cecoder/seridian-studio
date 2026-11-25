@@ -65,7 +65,7 @@ QA reopens an item when the fix does not hold. Developers fix test-first.
 
 | id | status | feature |
 |----|--------|---------|
-| F1 | open | Maximize: F11 fullscreen, double-click a panel header to maximize it and again to restore, maximize for the piano roll and mixer, remembered per window |
+| F1 | partial: F11 toggles maximize and restore for the main, piano-roll and mixer windows (guard: keymap.zig "F1: F11 is bound to the window maximize toggle"); Raven has no fullscreen call; panel-header double-click maximize and per-window memory not done | Maximize: F11 fullscreen, double-click a panel header to maximize it and again to restore, maximize for the piano roll and mixer, remembered per window |
 | F2 | open | Loop region, metronome and count-in from the CLI and keyboard |
 | F3 | open | MIDI file import and export from the CLI |
 | F4 | open | Quantize and humanize commands |

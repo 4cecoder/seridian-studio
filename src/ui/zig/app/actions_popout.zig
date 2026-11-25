@@ -112,7 +112,22 @@ pub fn run_action_for(action: ext.SeridianAction, from_popout: c_int) void {
         ext.SERIDIAN_ACTION_POPOUT_MIXER => {
             fns.mixer_popout_toggle();
         },
+        ext.SERIDIAN_ACTION_TOGGLE_FULLSCREEN => {
+            toggle_window_maximized(app.window);
+        },
         else => {},
+    }
+}
+
+/// F11: Raven has no fullscreen call, only maximize and restore, so F11 toggles between those for `window`.
+pub fn toggle_window_maximized(window: raven.Rid) void {
+    if (window == raven.R_INVALID_ID or raven.Rwindow_is_valid(window) == 0) return;
+    if (ext.seridian_keymap_restore_on_f11(raven.Rwindow_is_maximized(window)) != 0) {
+        raven.Rwindow_restore(window);
+        fns.set_status("Window restored");
+    } else {
+        raven.Rwindow_maximize(window);
+        fns.set_status("Window maximized");
     }
 }
 
@@ -626,6 +641,10 @@ pub fn popout_event_hook(window: raven.Rid, event: [*c]const raven.REvent, user_
                 ext.SERIDIAN_ACTION_POPOUT_MIXER,
                 => {
                     if (event.*.repeat == 0) run_action_for(action, 1);
+                    return raven.R_TRUE;
+                },
+                ext.SERIDIAN_ACTION_TOGGLE_FULLSCREEN => {
+                    if (event.*.repeat == 0) toggle_window_maximized(window);
                     return raven.R_TRUE;
                 },
                 ext.SERIDIAN_ACTION_POPOUT_PIANO_ROLL => {

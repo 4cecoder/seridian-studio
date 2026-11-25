@@ -17,6 +17,7 @@ pub const key_a: i32 = 65;
 pub const key_enter: i32 = 257;
 pub const key_backspace: i32 = 259;
 pub const key_delete: i32 = 261;
+pub const key_f11: i32 = 283;
 
 /// RModifier bits; Ctrl/Alt/Super are shared with piano_math.
 pub const modifier_shift: u32 = 1 << 0;
@@ -45,6 +46,7 @@ pub const Action = enum {
     popout_piano_roll,
     popout_mixer,
     file_export_wav,
+    toggle_fullscreen,
 };
 
 pub const Binding = struct {
@@ -80,6 +82,7 @@ pub const bindings = [_]Binding{
     .{ .key = 'E', .cmd = true, .shift = true, .action = .file_export_wav },
     .{ .key = 'P', .cmd = true, .shift = true, .action = .popout_piano_roll },
     .{ .key = 'M', .cmd = true, .shift = true, .action = .popout_mixer },
+    .{ .key = key_f11, .cmd = false, .shift = false, .action = .toggle_fullscreen },
     // Plain keys kept from the original timeline shortcuts. Plain letters stay free for the computer-keyboard piano.
     .{ .key = key_equal, .cmd = false, .shift = false, .action = .zoom_in },
     .{ .key = key_minus, .cmd = false, .shift = false, .action = .zoom_out },
@@ -130,8 +133,15 @@ fn groupOf(action: Action) ?Group {
         .play_stop, .stop_and_rewind => .transport,
         .undo, .redo, .select_all, .copy, .cut, .paste, .duplicate, .delete, .split_at_playhead => .edit,
         .file_new, .file_open, .file_save, .file_save_as, .file_export_wav => .file,
-        .view_arrangement, .view_piano_roll, .zoom_in, .zoom_out, .popout_piano_roll, .popout_mixer => .view,
+        .view_arrangement, .view_piano_roll, .zoom_in, .zoom_out, .popout_piano_roll, .popout_mixer, .toggle_fullscreen => .view,
     };
+}
+
+/// What F11 does to a window: Raven has maximize and restore but no true fullscreen call.
+pub const MaximizeStep = enum { maximize, restore };
+
+pub fn maximizeStep(is_maximized: bool) MaximizeStep {
+    return if (is_maximized) .restore else .maximize;
 }
 
 /// Short human label of an action, as shown in the help.
@@ -160,6 +170,7 @@ pub fn actionLabel(action: Action) []const u8 {
         .zoom_out => "Zoom out",
         .popout_piano_roll => "Pop out Piano Roll",
         .popout_mixer => "Pop out Mixer",
+        .toggle_fullscreen => "Maximize / restore window",
     };
 }
 
@@ -180,6 +191,7 @@ fn keyName(out: *Writer, key: i32) RenderError!void {
         key_enter => try out.put("Enter"),
         key_backspace => try out.put("Backspace"),
         key_delete => try out.put("Delete"),
+        key_f11 => try out.put("F11"),
         else => {
             if (key < 33 or key > 126) return error.NoSpaceLeft;
             const ch: [1]u8 = .{@intCast(key)};
@@ -298,6 +310,11 @@ fn exportText(out: [*]u8, capacity: usize, rendered: RenderError![]const u8) c_i
     }
     out[text.len] = 0;
     return @intCast(text.len);
+}
+
+/// C ABI: 1 when F11 should restore the window (it is maximized), 0 when it should maximize it.
+pub export fn seridian_keymap_restore_on_f11(is_maximized: c_int) callconv(.c) c_int {
+    return @intFromBool(maximizeStep(is_maximized != 0) == .restore);
 }
 
 /// MIDI pitch for an RKey letter code (A..Z, ';' is 59) played from `octave_base`,
@@ -595,4 +612,24 @@ test "U6: C ABI shortcut text is NUL-terminated and rejects a small buffer" {
     var tiny: [4]u8 = undefined;
     try testing.expectEqual(@as(c_int, -1), seridian_keymap_shortcut(@intCast(@backingInt(Action.file_save_as)), &tiny, tiny.len));
     try testing.expectEqual(@as(c_int, -1), seridian_keymap_shortcut(9999, &buf, buf.len));
+}
+
+test "F1: F11 is bound to the window maximize toggle, with no modifiers" {
+    try testing.expectEqual(Action.toggle_fullscreen, lookup(key_f11, 0));
+    try testing.expectEqual(Action.none, lookup(key_f11, piano_math.modifier_ctrl));
+}
+
+test "F1: the help lists F11" {
+    var buf: [help_capacity]u8 = undefined;
+    const text = try renderHelp(&buf, .linux_windows);
+    try testing.expect(std.mem.indexOf(u8, text, "F11  Maximize / restore window\n") != null);
+}
+
+test "F1: the RKey code of F11 is the Raven one (R_KEY_F11)" {
+    try testing.expectEqual(@as(i32, 283), key_f11);
+}
+
+test "F1: maximizeStep restores a maximized window and maximizes the others" {
+    try testing.expectEqual(MaximizeStep.restore, maximizeStep(true));
+    try testing.expectEqual(MaximizeStep.maximize, maximizeStep(false));
 }

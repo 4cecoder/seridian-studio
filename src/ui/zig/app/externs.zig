@@ -281,12 +281,15 @@ pub const SERIDIAN_ACTION_ZOOM_OUT: c_int = 19;
 pub const SERIDIAN_ACTION_POPOUT_PIANO_ROLL: c_int = 20;
 pub const SERIDIAN_ACTION_POPOUT_MIXER: c_int = 21;
 pub const SERIDIAN_ACTION_FILE_EXPORT_WAV: c_int = 22;
+pub const SERIDIAN_ACTION_TOGGLE_FULLSCREEN: c_int = 23;
 /// Help text and status-bar hint rendered from the keymap table for this platform; NUL-terminated into `out`.
 /// Return the length, or -1 when `capacity` is too small.
 pub extern fn seridian_keymap_help(out: [*]u8, capacity: usize) c_int;
 pub extern fn seridian_keymap_hint(out: [*]u8, capacity: usize) c_int;
 /// Key text of an action's first binding ("Ctrl+Shift+S"), NUL-terminated into `out`; -1 when unbound or too small.
 pub extern fn seridian_keymap_shortcut(action: c_int, out: [*]u8, capacity: usize) c_int;
+/// 1 when F11 should restore a window that is maximized, 0 when it should maximize it.
+pub extern fn seridian_keymap_restore_on_f11(is_maximized: c_int) c_int;
 /// Action for an RKey code and RModifier bits, or SERIDIAN_ACTION_NONE.
 pub extern fn seridian_keymap_lookup(key: c_int, modifiers: c_uint) c_int;
 
@@ -295,7 +298,8 @@ test "keymap action tags match the Zig Action enum" {
     const keymap = @import("../keymap.zig");
     try std.testing.expectEqual(@as(c_int, @backingInt(keymap.Action.popout_mixer)), SERIDIAN_ACTION_POPOUT_MIXER);
     try std.testing.expectEqual(@as(c_int, @backingInt(keymap.Action.play_stop)), SERIDIAN_ACTION_PLAY_STOP);
-    try std.testing.expectEqual(@as(usize, @intCast(SERIDIAN_ACTION_FILE_EXPORT_WAV)) + 1, @typeInfo(keymap.Action).@"enum".field_names.len);
+    try std.testing.expectEqual(@as(c_int, @backingInt(keymap.Action.toggle_fullscreen)), SERIDIAN_ACTION_TOGGLE_FULLSCREEN);
+    try std.testing.expectEqual(@as(usize, @intCast(SERIDIAN_ACTION_TOGGLE_FULLSCREEN)) + 1, @typeInfo(keymap.Action).@"enum".field_names.len);
 }
 
 // ---- System preflight (src/system/preflight_c_api.zig, exported from libdaw-engine) ----

@@ -672,6 +672,10 @@ pub fn mixer_event_hook(window: raven.Rid, event: [*c]const raven.REvent, user_d
                     if (event.*.repeat == 0) fns.run_action_for(action, 1);
                     return raven.R_TRUE;
                 },
+                ext.SERIDIAN_ACTION_TOGGLE_FULLSCREEN => {
+                    if (event.*.repeat == 0) fns.toggle_window_maximized(window);
+                    return raven.R_TRUE;
+                },
                 ext.SERIDIAN_ACTION_POPOUT_MIXER => {
                     app.mixer_dock_requested = 1; // closing the window from inside its own event is deferred
                     return raven.R_TRUE;

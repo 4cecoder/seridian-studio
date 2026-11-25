@@ -191,6 +191,7 @@ pub const piano_key_handler = piano.piano_key_handler;
 pub const piano_roll_active = piano.piano_roll_active;
 pub const run_action_for = actions_popout.run_action_for;
 pub const run_action = actions_popout.run_action;
+pub const toggle_window_maximized = actions_popout.toggle_window_maximized;
 pub const text_entry_focused = actions_popout.text_entry_focused;
 pub const select_track = actions_popout.select_track;
 pub const point_in_widget = actions_popout.point_in_widget;
