@@ -395,8 +395,18 @@ pub fn control_poll() void {
             client.length += @as(c_int, @intCast(got));
             const newline: [*c]u8 = @ptrCast(libc.memchr(&client.line, '\n', @intCast(client.length)));
             if (newline != null) {
+                // One command per request: bytes after the newline, or a NUL inside the line (which would cut
+                // it short), are refused instead of being dropped silently.
+                const line_length: usize = @intCast(newline - @as([*c]u8, &client.line));
+                const request_length: usize = @intCast(client.length);
                 newline.* = 0;
-                control_reply(client.fd, control_run_line(&client.line));
+                if (line_length + 1 < request_length) {
+                    control_reply(client.fd, "send one command per request");
+                } else if (libc.strlen(&client.line) != line_length) {
+                    control_reply(client.fd, "the command contains a NUL byte");
+                } else {
+                    control_reply(client.fd, control_run_line(&client.line));
+                }
                 control_drop(client);
             } else if (client.length >= st.CONTROL_LINE_CAPACITY) {
                 control_reply(client.fd, "line too long");
