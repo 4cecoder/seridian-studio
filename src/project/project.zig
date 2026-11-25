@@ -267,6 +267,32 @@ pub const ProjectHeader = struct {
 };
 
 // =============================================================================
+// Automation State (for serialization)
+// =============================================================================
+
+/// Most points per saved lane (matches audio/automation.zig MAX_POINTS).
+pub const MAX_AUTOMATION_POINTS = 128;
+
+pub const AutomationPointState = struct {
+    beat: f64 = 0.0,
+    value: f32 = 0.0,
+};
+
+/// One automation lane as saved: points in beat order.
+pub const AutomationLaneState = struct {
+    count: u8 = 0,
+    points: [MAX_AUTOMATION_POINTS]AutomationPointState = @as([MAX_AUTOMATION_POINTS]AutomationPointState, @splat(.{})),
+};
+
+/// Every automation lane of the session.
+pub const AutomationState = struct {
+    track_gain: [TRACK_COUNT]AutomationLaneState = @as([TRACK_COUNT]AutomationLaneState, @splat(.{})),
+    track_pan: [TRACK_COUNT]AutomationLaneState = @as([TRACK_COUNT]AutomationLaneState, @splat(.{})),
+    track_wet: [TRACK_COUNT]AutomationLaneState = @as([TRACK_COUNT]AutomationLaneState, @splat(.{})),
+    master_gain: AutomationLaneState = .{},
+};
+
+// =============================================================================
 // Full Project State
 // =============================================================================
 
@@ -280,6 +306,9 @@ pub const Project = struct {
 
     /// Master effects chain
     master_effects: EffectsChainState = .{},
+
+    /// Automation lanes
+    automation: AutomationState = .{},
 
     /// Project folder path (runtime only, not saved)
     folder_path: ?[]const u8 = null,

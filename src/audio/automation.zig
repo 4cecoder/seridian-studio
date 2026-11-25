@@ -92,6 +92,21 @@ pub const Lane = struct {
         self.publish(target);
     }
 
+    /// Copies the points into `out` (at most `out.len`, in beat order) and returns how many.
+    pub fn copyPoints(self: *Lane, out: []Point) usize {
+        const table = self.acquire();
+        defer self.release();
+        const n = @min(table.count, out.len);
+        @memcpy(out[0..n], table.points[0..n]);
+        return n;
+    }
+
+    /// Replaces every point of the lane with `points` (extra points beyond MAX_POINTS are dropped).
+    pub fn setPoints(self: *Lane, points: []const Point) void {
+        self.clear();
+        for (points) |point| self.addPoint(point.beat, point.value) catch return;
+    }
+
     /// Number of points (UI thread).
     pub fn count(self: *const Lane) usize {
         return self.tables[self.active.load(.seq_cst)].count;

@@ -40,6 +40,9 @@ const MIDI_FILE_EXT = ".bin";
 const MAX_MIDI_FILE_BYTES = 256 * 1024 * 1024;
 const MIDI_SERIALIZE_RETRIES = 4;
 
+/// Largest project.daw read or written: eight chains of effect parameters plus 32 automation lanes of 128 points.
+const MAX_PROJECT_FILE_BYTES = 262144;
+
 /// Fixed buffer writer for INI generation
 const FixedBufferWriter = struct {
     buf: []u8,
@@ -101,7 +104,7 @@ pub fn createProjectFolder(allocator: std.mem.Allocator, base_path: []const u8, 
 /// Save project to its folder (atomic write)
 pub fn saveProject(allocator: std.mem.Allocator, project: *const Project, folder_path: []const u8) !void {
     // Generate INI content
-    var content_buf: [65536]u8 = undefined; // 64KB should be plenty
+    var content_buf: [MAX_PROJECT_FILE_BYTES]u8 = undefined;
     var writer = FixedBufferWriter{ .buf = &content_buf };
 
     try writeProjectIni(&writer, project);
@@ -214,6 +217,56 @@ fn writeProjectIni(writer: *FixedBufferWriter, project: *const Project) !void {
     for (0..project_mod.TRACK_COUNT) |i| {
         try writeTrack(writer, i, &project.tracks[i]);
     }
+
+    try writeAutomation(writer, &project.automation);
+}
+
+fn writeLane(writer: *FixedBufferWriter, key: []const u8, lane: *const project_mod.AutomationLaneState) !void {
+    if (lane.count == 0) return;
+    try writer.print("{s} =", .{key});
+    for (lane.points[0..lane.count]) |point| try writer.print(" {d}:{d}", .{ point.beat, point.value });
+    try writer.writeAll("\n");
+}
+
+/// [Automation]: one line per lane that has points, `track_gain_0 = beat:value beat:value ...`.
+fn writeAutomation(writer: *FixedBufferWriter, state: *const project_mod.AutomationState) !void {
+    try writer.writeAll("\n[Automation]\n");
+    var key_buf: [32]u8 = undefined;
+    for (0..project_mod.TRACK_COUNT) |i| {
+        try writeLane(writer, try std.fmt.bufPrint(&key_buf, "track_gain_{d}", .{i}), &state.track_gain[i]);
+        try writeLane(writer, try std.fmt.bufPrint(&key_buf, "track_pan_{d}", .{i}), &state.track_pan[i]);
+        try writeLane(writer, try std.fmt.bufPrint(&key_buf, "track_wet_{d}", .{i}), &state.track_wet[i]);
+    }
+    try writeLane(writer, "master_gain", &state.master_gain);
+}
+
+fn parseLane(lane: *project_mod.AutomationLaneState, value: []const u8) void {
+    lane.count = 0;
+    var tokens = std.mem.tokenizeScalar(u8, value, ' ');
+    while (tokens.next()) |token| {
+        if (lane.count >= project_mod.MAX_AUTOMATION_POINTS) return;
+        const colon = std.mem.indexOfScalar(u8, token, ':') orelse continue;
+        const beat = std.fmt.parseFloat(f64, token[0..colon]) catch continue;
+        const point_value = std.fmt.parseFloat(f32, token[colon + 1 ..]) catch continue;
+        if (!std.math.isFinite(beat) or !std.math.isFinite(point_value) or beat < 0) continue;
+        lane.points[lane.count] = .{ .beat = beat, .value = point_value };
+        lane.count += 1;
+    }
+}
+
+fn parseAutomationKey(project: *Project, key: []const u8, value: []const u8) void {
+    if (std.mem.eql(u8, key, "master_gain")) return parseLane(&project.automation.master_gain, value);
+    const prefixes = [_]struct { name: []const u8, lanes: *[project_mod.TRACK_COUNT]project_mod.AutomationLaneState }{
+        .{ .name = "track_gain_", .lanes = &project.automation.track_gain },
+        .{ .name = "track_pan_", .lanes = &project.automation.track_pan },
+        .{ .name = "track_wet_", .lanes = &project.automation.track_wet },
+    };
+    for (prefixes) |prefix| {
+        if (!std.mem.startsWith(u8, key, prefix.name)) continue;
+        const index = std.fmt.parseInt(usize, key[prefix.name.len..], 10) catch return;
+        if (index < project_mod.TRACK_COUNT) parseLane(&prefix.lanes[index], value);
+        return;
+    }
 }
 
 fn writeTrack(writer: *FixedBufferWriter, index: usize, track: *const TrackState) !void {
@@ -289,9 +342,9 @@ pub fn loadProject(allocator: std.mem.Allocator, folder_path: []const u8) !Proje
 
     // Read file
     const stat = try file.stat(sys.io());
-    const file_size = @min(stat.size, 65536);
+    const file_size = @min(stat.size, MAX_PROJECT_FILE_BYTES);
 
-    var content_buf: [65536]u8 = undefined;
+    var content_buf: [MAX_PROJECT_FILE_BYTES]u8 = undefined;
     const bytes_read = try file.readPositionalAll(sys.io(), &content_buf, 0);
     const content = content_buf[0..@min(bytes_read, file_size)];
 
@@ -415,6 +468,11 @@ fn parseKeyValue(project: *Project, section: []const u8, key: []const u8, value:
         } else if (std.mem.eql(u8, key, "loop_enabled")) {
             project.header.loop_enabled = std.mem.eql(u8, value, "true");
         }
+        return;
+    }
+
+    if (std.mem.eql(u8, section, "Automation")) {
+        parseAutomationKey(project, key, value);
         return;
     }
 

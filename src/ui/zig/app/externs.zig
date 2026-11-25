@@ -82,6 +82,9 @@ pub extern fn audio_engine_get_track_instrument_name(engine: ?*anyopaque, track:
 pub extern fn audio_engine_get_track_instrument_type(engine: ?*anyopaque, track: c_int) c_int;
 
 pub extern fn project_get_name() [*c]const u8;
+pub extern fn project_capture_engine(engine: ?*anyopaque) c_int;
+pub extern fn project_apply_engine(engine: ?*anyopaque) c_int;
+pub extern fn project_engine_signature(engine: ?*anyopaque) u64;
 pub extern fn project_last_error() [*c]const u8;
 pub extern fn project_set_track_name(track: c_int, name: [*c]const u8) void;
 pub extern fn project_get_track_name(track: c_int) [*c]const u8;

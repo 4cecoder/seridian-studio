@@ -247,6 +247,7 @@ pub fn validate_session_name(name: [*c]const u8) [*c]const u8 {
 /// right before every save. The instrument is stored as its engine type, or -1 for none.
 pub fn project_capture_mixer() void {
     ext.project_set_master_volume(app.master_gain);
+    _ = ext.project_capture_engine(app.engine);
     var i: c_int = 0;
     while (i < st.SERIDIAN_PROJECT_TRACKS and i < st.SERIDIAN_TRACK_COUNT) : (i += 1) {
         ext.project_set_track_volume(i, ext.audio_engine_get_track_gain(app.engine, i));
@@ -275,6 +276,7 @@ pub fn project_apply_mixer() void {
         ext.audio_engine_set_track_solo(app.engine, i, ext.project_get_track_solo(i));
         ext.audio_engine_set_track_arm(app.engine, i, ext.project_get_track_armed(i));
     }
+    _ = ext.project_apply_engine(app.engine);
     fns.mixer_sync_all();
 }
 
@@ -484,6 +486,9 @@ pub fn session_signature() u64 {
     var hash: u64 = 14695981039346656037;
     const tempo = ext.audio_engine_get_tempo(app.engine);
     hash = hash_bytes(hash, &tempo, @sizeOf(@TypeOf(tempo)));
+    hash = hash_bytes(hash, &app.master_gain, @sizeOf(@TypeOf(app.master_gain)));
+    const engine_signature = ext.project_engine_signature(app.engine);
+    hash = hash_bytes(hash, &engine_signature, @sizeOf(@TypeOf(engine_signature)));
     var track: c_int = 0;
     while (track < st.SERIDIAN_TRACK_COUNT) : (track += 1) {
         const gain = ext.audio_engine_get_track_gain(app.engine, track);

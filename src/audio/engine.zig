@@ -21,7 +21,7 @@ const LinearRamp = @import("../dsp/core.zig").LinearRamp;
 const alsa_seq = @import("../midi/alsa_seq.zig");
 
 /// Index of the Wet parameter of the reverb effect.
-const REVERB_WET_PARAM = 3;
+pub const REVERB_WET_PARAM = 3;
 
 const log = std.log.scoped(.audio_engine);
 
@@ -1035,6 +1035,7 @@ pub const AudioEngine = struct {
     pub fn trackReverbWet(self: *AudioEngine, track: usize) ?f32 {
         if (track >= TRACK_COUNT) return null;
         const reverb = self.trackReverb(track) orelse return null;
+        if (self.wet_manual[track]) |manual| return manual;
         const param = reverb.getParameter(REVERB_WET_PARAM) orelse return null;
         return param.value;
     }
@@ -1043,7 +1044,9 @@ pub const AudioEngine = struct {
     pub fn setTrackReverbWet(self: *AudioEngine, track: usize, wet: f32) bool {
         if (track >= TRACK_COUNT) return false;
         const reverb = self.trackReverb(track) orelse return false;
-        reverb.setParameter(REVERB_WET_PARAM, std.math.clamp(wet, 0.0, 1.0));
+        const clamped = std.math.clamp(wet, 0.0, 1.0);
+        reverb.setParameter(REVERB_WET_PARAM, clamped);
+        if (self.wet_manual[track] != null) self.wet_manual[track] = clamped;
         return true;
     }
 
@@ -1943,6 +1946,8 @@ test "AudioEngine - reverb wet automation applies while playing and restores whe
     engine.position.store(2 * 24000, .monotonic);
     engine.process(&output);
     try testing.expectApproxEqAbs(@as(f32, 0.5), engine.track_effects[0].getEffect(0).?.getParameter(REVERB_WET_PARAM).?.value, 0.01);
+    // The wet amount the user set is still what is reported (and saved) while a lane drives the effect.
+    try testing.expectApproxEqAbs(@as(f32, 0.2), engine.trackReverbWet(0).?, 0.001);
     engine.playing.store(false, .monotonic);
     engine.process(&output);
     try testing.expectApproxEqAbs(@as(f32, 0.2), engine.track_effects[0].getEffect(0).?.getParameter(REVERB_WET_PARAM).?.value, 0.001);

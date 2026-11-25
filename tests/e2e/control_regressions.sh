@@ -6,7 +6,7 @@
 # kills only the pid it started.
 #
 # Usage: tests/e2e/control_regressions.sh [test-name ...]
-#   tests: open_restores_bpm_and_master, relative_paths_are_absolute, one_command_per_request, single_instance, instruments_round_trip, reverb_from_the_cli, transport_replies, note_limits_agree, file_errors_name_the_cause, state_is_fresh_after_a_command, track_names
+#   tests: open_restores_bpm_and_master, relative_paths_are_absolute, one_command_per_request, single_instance, instruments_round_trip, reverb_from_the_cli, transport_replies, note_limits_agree, file_errors_name_the_cause, state_is_fresh_after_a_command, track_names, effects_survive_save_and_open
 # Requires: zig-out/bin/seridian and zig-out/bin/seridian-studio-headless
 #   (zig build -Dheadless=true), jq, python3. Exit code 0 when all selected tests pass.
 
@@ -170,6 +170,20 @@ count_apps() {
         if tr '\0' '\n' <"/proc/$p/environ" 2>/dev/null | grep -qx "XDG_RUNTIME_DIR=$RUNTIME"; then n=$((n + 1)); fi
     done
     echo "$n"
+}
+
+# Stops the app cleanly and starts a fresh one in the same private directories; waits for the socket.
+restart_app() {
+    kill "$APP_PID" 2>/dev/null
+    for _ in $(seq 1 50); do kill -0 "$APP_PID" 2>/dev/null || break; sleep 0.1; done
+    wait "$APP_PID" 2>/dev/null
+    cd "$APP_CWD" && { "$APP" >"$WORK/app-restart.log" 2>&1 & APP_PID=$!; }
+    cd "$ROOT" || return 1
+    for _ in $(seq 1 100); do
+        if [ "$("$CLI" bpm 120 2>/dev/null)" = "ok" ]; then return 0; fi
+        sleep 0.2
+    done
+    return 1
 }
 
 test_single_instance() {
@@ -342,7 +356,28 @@ test_track_names() {
     [ "$(state_field '.tracks[1].name')" = "Lead 2" ] && pass "second name restored too" || fail "second name restored too"
 }
 
-ALL="open_restores_bpm_and_master relative_paths_are_absolute one_command_per_request single_instance instruments_round_trip reverb_from_the_cli transport_replies note_limits_agree file_errors_name_the_cause state_is_fresh_after_a_command track_names"
+test_effects_survive_save_and_open() {
+    echo "== reverb, EQ presets and automation survive save then open in a fresh app (B12, B33)"
+    local dir="$WORK/fx" a="$WORK/fx_a.wav" b="$WORK/fx_b.wav" got
+    "$CLI" set 1 instrument Keys >/dev/null && "$CLI" clear 1 >/dev/null
+    for beat in 0 1 2 3; do "$CLI" note 1 "$((60 + beat))" "$beat" 1 100 >/dev/null; done
+    "$CLI" set 1 reverb on >/dev/null && "$CLI" set 1 reverb wet 0.4 >/dev/null || { fail "set reverb"; return; }
+    "$CLI" eq 1 preset bass >/dev/null && "$CLI" eq master tilt on >/dev/null || { fail "set eq"; return; }
+    "$CLI" auto 1 gain 0 0.3 >/dev/null && "$CLI" auto 1 gain 4 1 >/dev/null || { fail "auto gain"; return; }
+    "$CLI" auto 1 wet 0 0.9 >/dev/null && "$CLI" auto master gain 0 0.8 >/dev/null || { fail "auto wet"; return; }
+    "$CLI" export "$a" >/dev/null && "$CLI" save "$dir" >/dev/null || { fail "export and save"; return; }
+    restart_app || { fail "restart the app"; return; }
+    [ "$(state_field '.tracks[0].reverb.present')" = "false" ] && pass "the fresh app starts without the reverb" || fail "the fresh app starts without the reverb"
+    "$CLI" open "$dir" >/dev/null || { fail "open"; return; }
+    [ "$(state_field '.tracks[0].reverb.present')" = "true" ] && pass "reverb present after open" || fail "reverb present after open"
+    got="$(wait_field '.tracks[0].reverb.wet' 0.4)" && pass "reverb wet 0.4 after open" || fail "reverb wet after open (got $got)"
+    grep -q "^track_gain_0 = " "$dir/project.daw" && grep -q "^track_wet_0 = " "$dir/project.daw" && pass "project.daw holds the automation lanes" || fail "project.daw holds the automation lanes"
+    "$CLI" export "$b" >/dev/null || { fail "export after open"; return; }
+    cmp -s "$a" "$b" && pass "the WAV after open is identical to the WAV before save" || fail "the WAV after open differs from the WAV before save ($(cmp "$a" "$b" 2>&1 | head -1))"
+    "$CLI" set 1 reverb off >/dev/null; "$CLI" auto clear 1 gain >/dev/null; "$CLI" auto clear 1 wet >/dev/null
+}
+
+ALL="open_restores_bpm_and_master relative_paths_are_absolute one_command_per_request single_instance instruments_round_trip reverb_from_the_cli transport_replies note_limits_agree file_errors_name_the_cause state_is_fresh_after_a_command track_names effects_survive_save_and_open"
 SELECTED="${*:-$ALL}"
 for name in $SELECTED; do
     "test_$name"
