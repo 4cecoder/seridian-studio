@@ -9,4 +9,5 @@ pub const main = @import("cli/main.zig").main;
 comptime {
     _ = @import("cli/song.zig");
     _ = @import("cli/main.zig");
+    _ = @import("control_limits");
 }

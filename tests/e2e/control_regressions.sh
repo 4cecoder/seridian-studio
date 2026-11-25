@@ -6,7 +6,7 @@
 # kills only the pid it started.
 #
 # Usage: tests/e2e/control_regressions.sh [test-name ...]
-#   tests: open_restores_bpm_and_master, relative_paths_are_absolute, one_command_per_request, single_instance, instruments_round_trip, reverb_from_the_cli, transport_replies
+#   tests: open_restores_bpm_and_master, relative_paths_are_absolute, one_command_per_request, single_instance, instruments_round_trip, reverb_from_the_cli, transport_replies, note_limits_agree
 # Requires: zig-out/bin/seridian and zig-out/bin/seridian-studio-headless
 #   (zig build -Dheadless=true), jq, python3. Exit code 0 when all selected tests pass.
 
@@ -255,7 +255,23 @@ test_transport_replies() {
     "$CLI" stop >/dev/null 2>&1
 }
 
-ALL="open_restores_bpm_and_master relative_paths_are_absolute one_command_per_request single_instance instruments_round_trip reverb_from_the_cli transport_replies"
+test_note_limits_agree() {
+    echo "== the CLI and the app agree on the largest note start and length (B3)"
+    local reply out
+    reply="$(raw_send 'note 1 60 1000001 1\n')"
+    [ "$reply" = "error: start must be a number of beats 0..1000000" ] && pass "app rejects start 1000001 with the shared message" || fail "app start message (got '$reply')"
+    reply="$(raw_send 'note 1 60 1e9 1\n')"
+    [ "$reply" = "error: start must be a number of beats 0..1000000" ] && pass "app rejects start 1e9" || fail "app rejects start 1e9 (got '$reply')"
+    reply="$(raw_send 'note 1 60 0 1000001\n')"
+    [ "$reply" = "error: length must be a number of beats above 0 and up to 1000000" ] && pass "app rejects length 1000001 with the shared message" || fail "app length message (got '$reply')"
+    out="$("$CLI" note 1 60 1e9 1 2>&1)" && fail "CLI rejects start 1e9" || pass "CLI rejects start 1e9 ($(printf '%s' "$out" | head -1))"
+    reply="$(raw_send 'note 1 60 1000000 1 90\n')"
+    [ "$reply" = "ok" ] && pass "app accepts start 1000000" || fail "app accepts start 1000000 (got '$reply')"
+    "$CLI" note 2 60 1000000 1 90 >/dev/null 2>&1 && pass "CLI accepts start 1000000" || fail "CLI accepts start 1000000"
+    "$CLI" clear 1 >/dev/null 2>&1; "$CLI" clear 2 >/dev/null 2>&1
+}
+
+ALL="open_restores_bpm_and_master relative_paths_are_absolute one_command_per_request single_instance instruments_round_trip reverb_from_the_cli transport_replies note_limits_agree"
 SELECTED="${*:-$ALL}"
 for name in $SELECTED; do
     "test_$name"

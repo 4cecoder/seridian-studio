@@ -17,6 +17,7 @@ const preflight = @import("../system/preflight.zig");
 const preflight_types = @import("../system/preflight_types.zig");
 const audio_settings = @import("../config/audio_settings.zig");
 const instrument_types = @import("../instruments/instrument_types.zig");
+const control_limits = @import("control_limits");
 
 const version_string = "0.1.0";
 const app_binary = "seridian-studio";
@@ -892,7 +893,7 @@ fn buildLine(buf: []u8, name: []const u8, args: []const []const u8) ArgError![]c
     if (std.mem.eql(u8, name, "auto")) {
         if (args.len == 4 and std.mem.eql(u8, args[0], "master")) {
             if (!std.mem.eql(u8, args[1], "gain")) return error.InvalidArgs;
-            const beat = try parseFloatIn(args[2], 0, 1e6);
+            const beat = try parseFloatIn(args[2], 0, control_limits.max_beats);
             const v = try parseFloatIn(args[3], 0, 1);
             return std.fmt.bufPrint(buf, "auto master gain {d} {d}", .{ beat, v }) catch too_long;
         }
@@ -904,7 +905,7 @@ fn buildLine(buf: []u8, name: []const u8, args: []const []const u8) ArgError![]c
         if (args.len == 4) {
             const track = try parseIntIn(args[0], 1, max_track);
             if (!isAutoLane(args[1])) return error.InvalidArgs;
-            const beat = try parseFloatIn(args[2], 0, 1e6);
+            const beat = try parseFloatIn(args[2], 0, control_limits.max_beats);
             const low: f64 = if (std.mem.eql(u8, args[1], "pan")) -1 else 0;
             const v = try parseFloatIn(args[3], low, 1);
             return std.fmt.bufPrint(buf, "auto {d} {s} {d} {d}", .{ track, args[1], beat, v }) catch too_long;
@@ -931,8 +932,8 @@ fn buildLine(buf: []u8, name: []const u8, args: []const []const u8) ArgError![]c
         if (args.len != 4 and args.len != 5) return error.InvalidArgs;
         const track = try parseIntIn(args[0], 1, max_track);
         const pitch = try parseIntIn(args[1], 0, 127);
-        const start = try parseFloatIn(args[2], 0, 1e9);
-        const length = try parseFloatIn(args[3], 0, 1e9);
+        const start = try parseFloatIn(args[2], 0, control_limits.max_beats);
+        const length = try parseFloatIn(args[3], 0, control_limits.max_beats);
         if (length <= 0) return error.InvalidArgs;
         const velocity = if (args.len == 5) try parseIntIn(args[4], 1, 127) else 100;
         return std.fmt.bufPrint(buf, "note {d} {d} {d} {d} {d}", .{ track, pitch, start, length, velocity }) catch too_long;
@@ -949,9 +950,9 @@ fn describeProblem(buf: []u8, name: []const u8, args: []const []const u8) []cons
         if (args.len != 4 and args.len != 5) return countProblem(buf, "note takes 4 or 5 arguments", args.len);
         if (intProblem(buf, "track", args[0], 1, max_track)) |m| return m;
         if (intProblem(buf, "pitch", args[1], 0, 127)) |m| return m;
-        if (parseFloatIn(args[2], 0, 1e9)) |_| {} else |_| return given(buf, "start must be a number of beats 0 or more", args[2]);
-        const length_ok = if (parseFloatIn(args[3], 0, 1e9)) |v| v > 0 else |_| false;
-        if (!length_ok) return given(buf, "length must be greater than 0", args[3]);
+        if (parseFloatIn(args[2], 0, control_limits.max_beats)) |_| {} else |_| return given(buf, control_limits.start_message, args[2]);
+        const length_ok = if (parseFloatIn(args[3], 0, control_limits.max_beats)) |v| v > 0 else |_| false;
+        if (!length_ok) return given(buf, control_limits.length_message, args[3]);
         if (args.len == 5) if (intProblem(buf, "velocity", args[4], 1, 127)) |m| return m;
         return fallback;
     }
@@ -997,7 +998,7 @@ fn describeProblem(buf: []u8, name: []const u8, args: []const []const u8) []cons
     if (eql(u8, name, "auto") and args.len == 4 and !eql(u8, args[0], "master")) {
         if (intProblem(buf, "track", args[0], 1, max_track)) |m| return m;
         if (!isAutoLane(args[1])) return given(buf, "lane must be gain, pan or wet", args[1]);
-        if (floatProblem(buf, "beat", args[2], 0, 1e6)) |m| return m;
+        if (floatProblem(buf, "beat", args[2], 0, control_limits.max_beats)) |m| return m;
         const low: f64 = if (eql(u8, args[1], "pan")) -1 else 0;
         return floatProblem(buf, "value", args[3], low, 1) orelse fallback;
     }
@@ -1605,8 +1606,8 @@ test "describeProblem names the argument that is wrong, its range and what was g
     try expectProblem("pitch must be a whole number 0..127, got '200'", "note", &.{ "1", "200", "0", "1" });
     try expectProblem("pitch must be a whole number 0..127, got 'abc'", "note", &.{ "1", "abc", "0", "1" });
     try expectProblem("track must be a whole number 1..8, got '9'", "note", &.{ "9", "60", "0", "1" });
-    try expectProblem("start must be a number of beats 0 or more, got '-3'", "note", &.{ "1", "60", "-3", "1" });
-    try expectProblem("length must be greater than 0, got '0'", "note", &.{ "1", "60", "0", "0" });
+    try expectProblem("start must be a number of beats 0..1000000, got '-3'", "note", &.{ "1", "60", "-3", "1" });
+    try expectProblem("length must be a number of beats above 0 and up to 1000000, got '0'", "note", &.{ "1", "60", "0", "0" });
     try expectProblem("velocity must be a whole number 1..127, got '500'", "note", &.{ "1", "60", "0", "1", "500" });
     try expectProblem("note takes 4 or 5 arguments, got 3", "note", &.{ "1", "60", "0" });
 }
@@ -1686,4 +1687,18 @@ test "describeProblem explains reverb arguments" {
     try expectProblem("reverb must be on, off or wet <0..1>, got 'maybe'", "set", &.{ "1", "reverb", "maybe" });
     try expectProblem("reverb wet must be a number 0..1, got '1.1'", "set", &.{ "1", "reverb", "wet", "1.1" });
     try expectProblem("reverb needs on, off or wet <0..1>", "set", &.{ "1", "reverb" });
+}
+
+test "note start and length share one limit with the app (B3)" {
+    try std.testing.expectEqual(@as(f64, 1_000_000), control_limits.max_beats);
+    try expectLine("note 1 60 1000000 1 100", "note", &.{ "1", "60", "1000000", "1" });
+    try expectLine("note 1 60 0 1000000 100", "note", &.{ "1", "60", "0", "1000000" });
+    try expectRejected("note", &.{ "1", "60", "1000001", "1" });
+    try expectRejected("note", &.{ "1", "60", "1e9", "1" });
+    try expectRejected("note", &.{ "1", "60", "0", "1000001" });
+    try expectProblem("start must be a number of beats 0..1000000, got '1e9'", "note", &.{ "1", "60", "1e9", "1" });
+    try expectProblem("length must be a number of beats above 0 and up to 1000000, got '0'", "note", &.{ "1", "60", "0", "0" });
+    // The app reports the same words.
+    try std.testing.expectEqualStrings("start must be a number of beats 0..1000000", control_limits.start_message);
+    try std.testing.expectEqualStrings("length must be a number of beats above 0 and up to 1000000", control_limits.length_message);
 }

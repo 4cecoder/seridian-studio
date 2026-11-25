@@ -12,6 +12,8 @@ const piano_math = @import("../piano_math.zig");
 const ui_state = @import("../ui_state.zig");
 const window_input = @import("../window_input.zig");
 
+const control_limits = @import("control_limits");
+
 const app = &st.app;
 
 /// Longest reply line; the instrument list is the longest message.
@@ -121,8 +123,8 @@ pub fn control_note(argv: [*c][*c]u8, argc: c_int) [*c]const u8 {
     if (argc != 5 and argc != 6) return "usage: note <track> <pitch> <start> <length> [velocity]";
     if (control_parse_track(argv[1], &track) == 0) return "track must be 1..8";
     if (control_parse_int(argv[2], 0, 127, &pitch) == 0) return "pitch must be 0..127";
-    if (control_parse_double(argv[3], 0.0, 1.0e6, &start) == 0) return "start must be a number of beats >= 0";
-    if (control_parse_double(argv[4], 0.0, 1.0e6, &length) == 0 or length <= 0.0) return "length must be a number of beats > 0";
+    if (control_parse_double(argv[3], 0.0, control_limits.max_beats, &start) == 0) return control_limits.start_message;
+    if (control_parse_double(argv[4], 0.0, control_limits.max_beats, &length) == 0 or length <= 0.0) return control_limits.length_message;
     if (argc == 6 and control_parse_int(argv[5], 1, 127, &velocity) == 0) return "velocity must be 1..127";
     var before: st.NoteSnapshot = undefined;
     fns.piano_undo_begin(track, &before);
@@ -223,7 +225,7 @@ pub fn control_auto_field(field: [*c]const u8) c_int {
 pub fn control_auto_add(target: c_int, track: c_int, beat_text: [*c]const u8, value_text: [*c]const u8) [*c]const u8 {
     var beat: f64 = 0.0;
     var value: f64 = 0.0;
-    if (control_parse_double(beat_text, 0.0, 1.0e6, &beat) == 0) return "beat must be a number >= 0";
+    if (control_parse_double(beat_text, 0.0, control_limits.max_beats, &beat) == 0) return "beat must be a number >= 0";
     const low: f64 = if (target == st.AUTO_TRACK_PAN) -1.0 else 0.0;
     if (control_parse_double(value_text, low, 1.0, &value) == 0) {
         return if (target == st.AUTO_TRACK_PAN) "pan must be -1..1" else "value must be 0..1";

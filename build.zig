@@ -80,6 +80,7 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
         .link_libc = true,
     });
+    cli_mod.addImport("control_limits", controlLimitsModule(ctx));
     const cli = b.addExecutable(.{ .name = "seridian", .root_module = cli_mod });
     b.installArtifact(cli);
     const cli_tests = b.addTest(.{ .root_module = cli_mod });
@@ -319,6 +320,15 @@ fn addRavenBuild(ctx: Ctx) *std.Build.Step {
     return &build_raven.step;
 }
 
+/// Limits shared by the CLI and the app's command socket (src/control_limits.zig).
+fn controlLimitsModule(ctx: Ctx) *std.Build.Module {
+    return ctx.b.createModule(.{
+        .root_source_file = ctx.b.path("src/control_limits.zig"),
+        .target = ctx.target,
+        .optimize = ctx.optimize,
+    });
+}
+
 fn addUiLib(ctx: Ctx, engine: *std.Build.Step.Compile, raven_build: *std.Build.Step) *std.Build.Step.Compile {
     const b = ctx.b;
     // The window is Zig (src/ui/zig/ui_lib.zig); Raven's public C API comes from its translated declarations.
@@ -332,6 +342,7 @@ fn addUiLib(ctx: Ctx, engine: *std.Build.Step.Compile, raven_build: *std.Build.S
     const ui_options = b.addOptions();
     ui_options.addOption(bool, "headless", ctx.headless);
     mod.addImport("ui_options", ui_options.createModule());
+    mod.addImport("control_limits", controlLimitsModule(ctx));
     // Zig widgets, exported with the C ABI (seridian_knob_create, ...).
     const knob_lib = b.addLibrary(.{
         .name = "daw-ui-knob",
