@@ -71,6 +71,7 @@ pub extern fn effect_set_param_value(engine: ?*anyopaque, track: c_int, slot: c_
 
 pub extern fn audio_engine_get_instrument_type_count() c_int;
 pub extern fn audio_engine_get_instrument_type_name(index: c_int) [*c]const u8;
+pub extern fn audio_engine_find_instrument_type(name: [*c]const u8) c_int;
 pub extern fn audio_engine_set_track_instrument(engine: ?*anyopaque, track: c_int, instrument_type: c_int) c_int;
 pub extern fn audio_engine_remove_track_instrument(engine: ?*anyopaque, track: c_int) void;
 pub extern fn audio_engine_track_has_instrument(engine: ?*anyopaque, track: c_int) c_int;

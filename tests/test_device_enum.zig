@@ -1,6 +1,5 @@
 /// Simple device enumeration test
 /// Verifies that audio device listing works
-
 const std = @import("std");
 const devices = @import("audio/devices.zig");
 

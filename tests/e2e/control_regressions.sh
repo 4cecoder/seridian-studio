@@ -6,7 +6,7 @@
 # kills only the pid it started.
 #
 # Usage: tests/e2e/control_regressions.sh [test-name ...]
-#   tests: open_restores_bpm_and_master, relative_paths_are_absolute, one_command_per_request, single_instance
+#   tests: open_restores_bpm_and_master, relative_paths_are_absolute, one_command_per_request, single_instance, instruments_round_trip
 # Requires: zig-out/bin/seridian and zig-out/bin/seridian-studio-headless
 #   (zig build -Dheadless=true), jq, python3. Exit code 0 when all selected tests pass.
 
@@ -92,6 +92,17 @@ wait_field() {
         if awk -v v="${value:-x}" -v t="$target" 'BEGIN { exit !(v + 0 > t - 0.1 && v + 0 < t + 0.1 && v != "x") }'; then
             echo "$value"; return 0
         fi
+        sleep 0.2
+    done
+    echo "$value"; return 1
+}
+
+# Polls a state field for up to 10 s until it equals the text. Prints the last value read; returns 0 on a match.
+wait_text() {
+    local field="$1" target="$2" value=""
+    for _ in $(seq 1 50); do
+        value="$(state_field "$field")"
+        if [ "$value" = "$target" ]; then echo "$value"; return 0; fi
         sleep 0.2
     done
     echo "$value"; return 1
@@ -191,7 +202,28 @@ test_single_instance() {
     [ "$(count_apps)" -eq 1 ] && pass "exactly one process after the restart" || fail "exactly one process after the restart (got $(count_apps))"
 }
 
-ALL="open_restores_bpm_and_master relative_paths_are_absolute one_command_per_request single_instance"
+test_instruments_round_trip() {
+    echo "== instruments listing, error text and set/state round trip (G5, B2, B5)"
+    local names count name got reply
+    names="$("$CLI" instruments)" || { fail "seridian instruments exits 0"; return; }
+    count="$(printf '%s\n' "$names" | wc -l)"
+    [ "$count" -eq 21 ] && pass "instruments prints 21 names" || fail "instruments prints 21 names (got $count)"
+    while IFS= read -r name; do
+        "$CLI" set 1 instrument "$name" >/dev/null 2>&1 || { fail "set accepts $name"; continue; }
+        got="$(wait_text '.tracks[0].instrument' "$name")" && pass "state reports $name" || fail "state reports $name (got $got)"
+    done <<<"$names"
+    reply="$(raw_send 'set 2 instrument modelpiano\n')"
+    [ "$reply" = "ok" ] && pass "raw set accepts modelpiano" || fail "raw set accepts modelpiano (got $reply)"
+    got="$(wait_text '.tracks[1].instrument' ModelPiano)" && pass "state reports ModelPiano" || fail "state reports ModelPiano (got $got)"
+    reply="$(raw_send 'set 2 instrument Nope\n')"
+    local missing=0
+    while IFS= read -r name; do
+        case "$reply" in *"$name"*) ;; *) missing=$((missing + 1)) ;; esac
+    done <<<"$names"
+    [ "$missing" -eq 0 ] && pass "unknown-instrument error lists all names" || fail "unknown-instrument error misses $missing names (got $reply)"
+}
+
+ALL="open_restores_bpm_and_master relative_paths_are_absolute one_command_per_request single_instance instruments_round_trip"
 SELECTED="${*:-$ALL}"
 for name in $SELECTED; do
     "test_$name"

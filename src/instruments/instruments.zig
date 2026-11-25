@@ -6,6 +6,7 @@
 const std = @import("std");
 
 pub const instrument = @import("instrument.zig");
+pub const instrument_types = @import("instrument_types.zig");
 pub const keys = @import("keys.zig");
 pub const wavetable_synth = @import("wavetable_synth.zig");
 pub const supersaw_synth = @import("supersaw_synth.zig");
@@ -37,56 +38,8 @@ pub const ModelClarinet = physical_winds.ModelClarinet;
 pub const ModelPiano = physical_piano.ModelPiano;
 pub const ModelPercussion = physical_percussion.ModelPercussion;
 
-/// Available instrument types
-pub const InstrumentType = enum(u8) {
-    keys = 0,
-    wavetable_synth = 1,
-    supersaw_synth = 2,
-    fm_synth = 3,
-    drum_kit = 4,
-    strings = 5,
-    brass = 6,
-    woodwind = 7,
-    harp = 8,
-    drum_kit_808 = 9,
-    drum_kit_909 = 10,
-    strings_warm = 11,
-    strings_bright = 12,
-    brass_trumpet = 13,
-    brass_horn = 14,
-    model_strings = 15,
-    model_pluck = 16,
-    model_brass = 17,
-    model_clarinet = 18,
-    model_piano = 19,
-    model_percussion = 20,
-
-    pub fn name(self: InstrumentType) []const u8 {
-        return switch (self) {
-            .keys => "Keys",
-            .wavetable_synth => "WavetableSynth",
-            .supersaw_synth => "SuperSaw",
-            .fm_synth => "FM Synth",
-            .drum_kit => "DrumKit",
-            .strings => "Strings",
-            .brass => "Brass",
-            .woodwind => "Woodwind",
-            .harp => "Harp",
-            .drum_kit_808 => "DrumKit808",
-            .drum_kit_909 => "DrumKit909",
-            .strings_warm => "StringsWarm",
-            .strings_bright => "StringsBright",
-            .brass_trumpet => "BrassTrumpet",
-            .brass_horn => "BrassHorn",
-            .model_strings => "ModelStrings",
-            .model_pluck => "ModelPluck",
-            .model_brass => "ModelBrass",
-            .model_clarinet => "ModelClarinet",
-            .model_piano => "ModelPiano",
-            .model_percussion => "ModelPercussion",
-        };
-    }
-};
+/// Available instrument types (the table lives in instrument_types.zig so the CLI can share it).
+pub const InstrumentType = instrument_types.InstrumentType;
 
 /// Create an instrument by type
 pub fn createInstrument(allocator: std.mem.Allocator, instrument_type: InstrumentType) !*Instrument {

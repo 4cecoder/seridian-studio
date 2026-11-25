@@ -16,6 +16,7 @@ const song = @import("song.zig");
 const preflight = @import("../system/preflight.zig");
 const preflight_types = @import("../system/preflight_types.zig");
 const audio_settings = @import("../config/audio_settings.zig");
+const instrument_types = @import("../instruments/instrument_types.zig");
 
 const version_string = "0.1.0";
 const app_binary = "seridian-studio";
@@ -59,7 +60,8 @@ const wm_usage = wm_layer.usage_all;
 const play_usage = "seridian play";
 const stop_usage = "seridian stop";
 const bpm_usage = "seridian bpm <20..300>";
-const set_usage = "seridian set <track 1..8> gain <0..1.5> | pan <-1..1> | mute|solo|arm on|off | instrument NAME";
+const instruments_usage = "seridian instruments";
+const set_usage = "seridian set <track 1..8> gain <0..1.5> | pan <-1..1> | mute|solo|arm on|off | instrument NAME (see `seridian instruments`)";
 const note_usage = "seridian note <track 1..8> <pitch 0..127> <start >=0> <length >0> [velocity 1..127]";
 const clear_usage = "seridian clear <track 1..8>";
 const auto_usage = "seridian auto <track 1..8> gain <beat >=0> <0..1> | pan <beat> <-1..1> | wet <beat> <0..1>; auto master gain <beat> <0..1>; auto clear <track> gain|pan|wet";
@@ -160,6 +162,7 @@ const commands = [_]Command{
     .{ .name = "play", .summary = "Start playback in the running app", .usage = play_usage, .run = cmdPlay },
     .{ .name = "stop", .summary = "Stop playback in the running app", .usage = stop_usage, .run = cmdStop },
     .{ .name = "bpm", .summary = "Set the tempo (20..300)", .usage = bpm_usage, .run = cmdBpm },
+    .{ .name = "instruments", .summary = "List the instrument names `set N instrument` accepts, one per line", .usage = instruments_usage, .run = cmdInstruments },
     .{ .name = "set", .summary = "Set a track's gain, pan, mute, solo or arm", .usage = set_usage, .run = cmdSet },
     .{ .name = "note", .summary = "Add a note: track, pitch, start beat, length in beats, optional velocity", .usage = note_usage, .run = cmdNote },
     .{ .name = "clear", .summary = "Remove all notes on a track", .usage = clear_usage, .run = cmdClear },
@@ -682,6 +685,22 @@ fn cmdSong(allocator: std.mem.Allocator, io: std.Io, env: *const Env, args: []co
     return song.run(io, path, args);
 }
 
+/// Writes every instrument name, one per line.
+fn writeInstrumentNames(out: *std.Io.Writer) !void {
+    for (0..instrument_types.count) |i| {
+        try out.print("{s}\n", .{(@as(instrument_types.InstrumentType, @fromBackingInt(@intCast(i)))).name()});
+    }
+}
+
+fn cmdInstruments(_: std.mem.Allocator, io: std.Io, _: *const Env, args: []const []const u8) !u8 {
+    if (args.len != 0) return usageError(io, instruments_usage);
+    var out_buf: [1024]u8 = undefined;
+    var stdout_writer = std.Io.File.stdout().writer(io, &out_buf);
+    try writeInstrumentNames(&stdout_writer.interface);
+    try stdout_writer.interface.flush();
+    return 0;
+}
+
 fn usageFor(name: []const u8) []const u8 {
     for (commands) |command| {
         if (std.mem.eql(u8, command.name, name)) return command.usage;
@@ -710,7 +729,7 @@ fn sendCommand(allocator: std.mem.Allocator, io: std.Io, env: *const Env, name: 
 
     var line_buf: [256]u8 = undefined;
     const line = buildLine(&line_buf, name, args) catch {
-        var problem_buf: [200]u8 = undefined;
+        var problem_buf: [512]u8 = undefined;
         try printErr(io, "error: {s}\n", .{describeProblem(&problem_buf, name, args)});
         return usageError(io, usageFor(name));
     };
@@ -855,8 +874,8 @@ fn buildLine(buf: []u8, name: []const u8, args: []const []const u8) ArgError![]c
         if (std.mem.eql(u8, field, "instrument")) {
             const instrument = args[2];
             if (instrument.len == 0 or instrument.len > 32) return error.InvalidArgs;
-            for (instrument) |c| if (c == ' ' or c == '\t') return error.InvalidArgs;
-            return std.fmt.bufPrint(buf, "set {d} instrument {s}", .{ track, instrument }) catch too_long;
+            const found = instrument_types.fromName(instrument) orelse return error.InvalidArgs;
+            return std.fmt.bufPrint(buf, "set {d} instrument {s}", .{ track, found.name() }) catch too_long;
         }
         return error.InvalidArgs;
     }
@@ -944,7 +963,11 @@ fn describeProblem(buf: []u8, name: []const u8, args: []const []const u8) []cons
             const what = std.fmt.bufPrint(buf, "{s} must be on or off", .{field}) catch return fallback;
             return given(buf[what.len..], what, args[2]);
         }
-        if (eql(u8, field, "instrument")) return "instrument must be a name of 1 to 32 characters without spaces";
+        if (eql(u8, field, "instrument")) {
+            var names: [512]u8 = undefined;
+            const all = instrument_types.joinNames(&names, ", ") orelse return fallback;
+            return std.fmt.bufPrint(buf, "unknown instrument '{s}'; use one of: {s}", .{ args[2], all }) catch fallback;
+        }
         return std.fmt.bufPrint(buf, "unknown setting '{s}'; use gain, pan, mute, solo, arm or instrument", .{field}) catch fallback;
     }
     if (eql(u8, name, "eq")) {
@@ -1586,4 +1609,41 @@ test "describeProblem covers tempo, set, eq, auto and clear" {
 
 test "describeProblem falls back to a plain message for shapes it does not know" {
     try expectProblem("invalid arguments", "play", &.{"extra"});
+}
+
+test "instruments command lists every instrument name, one per line" {
+    var buf: [1024]u8 = undefined;
+    var writer = std.Io.Writer.fixed(&buf);
+    try writeInstrumentNames(&writer);
+    var lines = std.mem.splitScalar(u8, writer.buffered(), '\n');
+    var n: usize = 0;
+    while (lines.next()) |line| {
+        if (line.len == 0) continue;
+        try std.testing.expectEqualStrings((@as(instrument_types.InstrumentType, @fromBackingInt(@intCast(n)))).name(), line);
+        n += 1;
+    }
+    try std.testing.expectEqual(instrument_types.count, n);
+    var found = false;
+    for (commands) |command| {
+        if (std.mem.eql(u8, command.name, "instruments")) found = true;
+    }
+    try std.testing.expect(found);
+}
+
+test "set instrument accepts what the table accepts and rejects the rest" {
+    try expectLine("set 1 instrument ModelPiano", "set", &.{ "1", "instrument", "ModelPiano" });
+    try expectLine("set 1 instrument ModelPiano", "set", &.{ "1", "instrument", "modelpiano" });
+    try expectLine("set 1 instrument ModelPiano", "set", &.{ "1", "instrument", "Model Piano" });
+    try expectLine("set 2 instrument FMSynth", "set", &.{ "2", "instrument", "fm synth" });
+    try expectRejected("set", &.{ "1", "instrument", "Nope" });
+    try expectRejected("set", &.{ "1", "instrument", "" });
+}
+
+test "describeProblem lists every valid instrument for an unknown one" {
+    var names: [512]u8 = undefined;
+    const all = instrument_types.joinNames(&names, ", ") orelse return error.TestUnexpectedResult;
+    var want_buf: [700]u8 = undefined;
+    const want = try std.fmt.bufPrint(&want_buf, "unknown instrument 'Nope'; use one of: {s}", .{all});
+    var got_buf: [700]u8 = undefined;
+    try std.testing.expectEqualStrings(want, describeProblem(&got_buf, "set", &.{ "1", "instrument", "Nope" }));
 }

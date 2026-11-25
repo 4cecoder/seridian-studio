@@ -11,7 +11,6 @@
 ///
 /// Run as: zig build-exe tests/test_actual_playback.zig -lc -lpulse -I/usr/include && ./test_actual_playback
 /// Or: zig run tests/test_actual_playback.zig -lc -lpulse -I/usr/include
-
 const std = @import("std");
 const engine_mod = @import("audio/engine.zig");
 const AudioEngine = engine_mod.AudioEngine;
@@ -32,8 +31,8 @@ fn generateSineWave(allocator: std.mem.Allocator, frequency: f32, duration_secon
     var i: usize = 0;
     while (i < num_frames) : (i += 1) {
         const sample = @sin(phase) * 0.3; // 0.3 amplitude to avoid clipping
-        samples[i * 2] = sample;      // Left channel
-        samples[i * 2 + 1] = sample;  // Right channel
+        samples[i * 2] = sample; // Left channel
+        samples[i * 2 + 1] = sample; // Right channel
         phase += phase_increment;
 
         // Wrap phase to prevent accumulation errors
@@ -85,10 +84,7 @@ pub fn main() !void {
     defer allocator.free(test_tone);
 
     const num_frames = test_tone.len / 2;
-    std.debug.print("  SUCCESS: Generated {d} frames ({d:.2} seconds)\n", .{
-        num_frames,
-        @as(f32, @floatFromInt(num_frames)) / @as(f32, @floatFromInt(sample_rate))
-    });
+    std.debug.print("  SUCCESS: Generated {d} frames ({d:.2} seconds)\n", .{ num_frames, @as(f32, @floatFromInt(num_frames)) / @as(f32, @floatFromInt(sample_rate)) });
     std.debug.print("\n", .{});
 
     // Step 2: Initialize audio engine

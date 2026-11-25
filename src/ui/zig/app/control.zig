@@ -14,6 +14,10 @@ const window_input = @import("../window_input.zig");
 
 const app = &st.app;
 
+/// Longest reply line; the instrument list is the longest message.
+const CONTROL_REPLY_CAPACITY = 512;
+const CONTROL_ERROR_CAPACITY = CONTROL_REPLY_CAPACITY - 16;
+
 // Command socket: $XDG_RUNTIME_DIR/seridian.sock (mode 0600). A client sends one line and reads one reply
 // ("ok" or "error: ..."). Everything is non-blocking and polled once per frame, and each command is applied
 // on the UI thread through the same functions the buttons and the piano roll use.
@@ -145,6 +149,21 @@ pub fn control_clear(argv: [*c][*c]u8, argc: c_int) [*c]const u8 {
     return null;
 }
 
+var instrument_error: [CONTROL_ERROR_CAPACITY]u8 = undefined;
+
+/// "unknown instrument; use one of: A, B, ..." built from the engine's instrument table.
+fn unknown_instrument_message() [*c]const u8 {
+    var used: usize = @intCast(libc.snprintf(&instrument_error, instrument_error.len, "unknown instrument; use one of:"));
+    const type_count = ext.audio_engine_get_instrument_type_count();
+    var i: c_int = 0;
+    while (i < type_count and used < instrument_error.len) : (i += 1) {
+        const written = libc.snprintf(@as([*c]u8, &instrument_error) + used, instrument_error.len - used, "%s%s", @as([*c]const u8, if (i == 0) " " else ", "), ext.audio_engine_get_instrument_type_name(i));
+        if (written < 0) break;
+        used += @intCast(written);
+    }
+    return &instrument_error;
+}
+
 pub fn control_set(argv: [*c][*c]u8, argc: c_int) [*c]const u8 {
     var track: c_int = 0;
     if (argc != 4) return "usage: set <track> gain|pan|mute|solo|arm <value>";
@@ -170,17 +189,8 @@ pub fn control_set(argv: [*c][*c]u8, argc: c_int) [*c]const u8 {
             ext.audio_engine_set_track_arm(app.engine, track, on);
         }
     } else if (libc.strcmp(field, "instrument") == 0) {
-        const type_count = ext.audio_engine_get_instrument_type_count();
-        var type_: c_int = -1;
-        var i: c_int = 0;
-        while (i < type_count) : (i += 1) {
-            const name = ext.audio_engine_get_instrument_type_name(i);
-            if (name != null and libc.strcasecmp(name, value) == 0) {
-                type_ = i;
-                break;
-            }
-        }
-        if (type_ < 0) return "unknown instrument (try: Keys, WavetableSynth, SuperSaw)";
+        const type_ = ext.audio_engine_find_instrument_type(value);
+        if (type_ < 0) return unknown_instrument_message();
         if (ext.audio_engine_set_track_instrument(app.engine, track, type_) != 0) return "could not set the instrument";
     } else {
         return "field must be gain, pan, mute, solo, arm or instrument";
@@ -332,7 +342,7 @@ pub fn control_run_line(line: [*c]u8) [*c]const u8 {
 }
 
 pub fn control_reply(fd: c_int, error_: [*c]const u8) void {
-    var reply: [160]u8 = undefined;
+    var reply: [CONTROL_REPLY_CAPACITY]u8 = undefined;
     var length: c_int = undefined;
     if (error_ != null) {
         length = libc.snprintf(&reply, reply.len, "error: %s\n", error_);

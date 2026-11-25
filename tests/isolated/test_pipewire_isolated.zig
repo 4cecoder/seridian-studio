@@ -172,7 +172,7 @@ pub fn main() !void {
 
     // Step 6: Let it run briefly (stub doesn't have callbacks, but tests API)
     std.debug.print("Step 6: Sleeping for 200ms to allow runtime execution...\n", .{});
-    std.posix.nanosleep(0,200 * std.time.ns_per_ms);
+    std.posix.nanosleep(0, 200 * std.time.ns_per_ms);
     std.debug.print("  Result: PASS (runtime execution period completed)\n", .{});
     std.debug.print("\n", .{});
 
@@ -184,7 +184,7 @@ pub fn main() !void {
 
     // Step 8: Verify stopped state
     std.debug.print("Step 8: Verifying stopped state...\n", .{});
-    std.posix.nanosleep(0,50 * std.time.ns_per_ms);
+    std.posix.nanosleep(0, 50 * std.time.ns_per_ms);
     std.debug.print("  Running status: {}\n", .{backend.running.load(.acquire)});
     if (backend.running.load(.acquire)) {
         std.debug.print("  Result: FAIL (backend should not be running after stop)\n", .{});
@@ -210,12 +210,12 @@ pub fn main() !void {
             std.process.exit(EXIT_FAILURE);
         }
 
-        std.posix.nanosleep(0,50 * std.time.ns_per_ms);
+        std.posix.nanosleep(0, 50 * std.time.ns_per_ms);
 
         std.debug.print("  Cycle {d}: Stopping...\n", .{cycle + 1});
         backend.stop();
 
-        std.posix.nanosleep(0,50 * std.time.ns_per_ms);
+        std.posix.nanosleep(0, 50 * std.time.ns_per_ms);
 
         if (backend.running.load(.acquire)) {
             std.debug.print("  FAIL: Backend should be stopped\n", .{});

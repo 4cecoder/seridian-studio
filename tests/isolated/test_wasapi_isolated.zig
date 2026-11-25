@@ -266,7 +266,7 @@ pub fn main() !void {
 
     // Step 6: Sleep and collect data
     std.debug.print("Step 6: Sleeping for 500ms to allow callbacks...\n", .{});
-    std.posix.nanosleep(0,500 * std.time.ns_per_ms);
+    std.posix.nanosleep(0, 500 * std.time.ns_per_ms);
     std.debug.print("  Result: PASS (sleep completed)\n", .{});
     std.debug.print("\n", .{});
 
@@ -325,11 +325,11 @@ pub fn main() !void {
 
     // Step 9: Verify callbacks stopped
     std.debug.print("Step 9: Verifying callbacks stopped...\n", .{});
-    std.posix.nanosleep(0,100 * std.time.ns_per_ms);
+    std.posix.nanosleep(0, 100 * std.time.ns_per_ms);
     const count_after_stop = counter.getCount();
     std.debug.print("  Callback count immediately after stop: {d}\n", .{count_after_stop});
 
-    std.posix.nanosleep(0,200 * std.time.ns_per_ms);
+    std.posix.nanosleep(0, 200 * std.time.ns_per_ms);
     const count_final = counter.getCount();
     std.debug.print("  Callback count after 200ms wait: {d}\n", .{count_final});
 

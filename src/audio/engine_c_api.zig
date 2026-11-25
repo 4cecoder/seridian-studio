@@ -184,16 +184,22 @@ export fn audio_engine_get_master_meter_right(engine: ?*anyopaque) callconv(.c) 
 // =============================================================================
 
 /// Get number of available instrument types
-export fn audio_engine_get_instrument_type_count() callconv(.c) c_int {
+pub export fn audio_engine_get_instrument_type_count() callconv(.c) c_int {
     return @intCast(instruments.getInstrumentTypeCount());
 }
 
 /// Get instrument type name by index
-export fn audio_engine_get_instrument_type_name(index: c_int) callconv(.c) [*:0]const u8 {
+pub export fn audio_engine_get_instrument_type_name(index: c_int) callconv(.c) [*:0]const u8 {
     if (instruments.getInstrumentType(@intCast(index))) |inst_type| {
         return @ptrCast(inst_type.name().ptr);
     }
     return "Unknown";
+}
+
+/// Instrument type selected by a name (case and spaces ignored), or -1.
+pub export fn audio_engine_find_instrument_type(name: [*:0]const u8) callconv(.c) c_int {
+    const found = instruments.instrument_types.fromName(std.mem.span(name)) orelse return -1;
+    return @backingInt(found);
 }
 
 /// Set instrument on a track
@@ -229,9 +235,13 @@ pub export fn audio_engine_get_track_instrument_type(engine: ?*anyopaque, track:
     return -1;
 }
 
-/// Get instrument name for a track
-export fn audio_engine_get_track_instrument_name(engine: ?*anyopaque, track: c_int) callconv(.c) [*:0]const u8 {
+/// Instrument name for a track: the listed type name when the type is known (so it can be given back to
+/// `set N instrument`), otherwise the instrument's own display name.
+pub export fn audio_engine_get_track_instrument_name(engine: ?*anyopaque, track: c_int) callconv(.c) [*:0]const u8 {
     if (castEngineConst(engine)) |eng| {
+        if (eng.tracks[@intCast(track)].instrument_type) |known| {
+            return @ptrCast(known.name().ptr);
+        }
         if (eng.tracks[@intCast(track)].getInstrument()) |inst| {
             return @ptrCast(inst.name.ptr);
         }

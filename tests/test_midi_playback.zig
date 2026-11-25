@@ -2,7 +2,6 @@
 ///
 /// This test verifies that MIDI notes trigger the Keys instrument and produce audible output.
 /// It plays a simple C major chord for 3 seconds.
-
 const std = @import("std");
 const engine_mod = @import("audio/engine.zig");
 const AudioEngine = engine_mod.AudioEngine;
@@ -54,8 +53,8 @@ pub fn main() !void {
     // Set up track 0 with Keys instrument and unmute
     std.debug.print("[3/5] Setting up track 0 with Keys instrument...\n", .{});
     engine.setTrackMute(0, false);
-    engine.setTrackGain(0, 1.0);  // Max gain
-    engine.setMasterGain(1.0);    // Max master gain
+    engine.setTrackGain(0, 1.0); // Max gain
+    engine.setMasterGain(1.0); // Max master gain
     std.debug.print("  Track 0: gain=1.0, muted=false\n", .{});
     std.debug.print("  Master: gain=1.0\n\n", .{});
 
@@ -75,9 +74,9 @@ pub fn main() !void {
 
     // Trigger C major chord (C4=60, E4=64, G4=67)
     std.debug.print("  >> Triggering notes: C4(60), E4(64), G4(67)\n", .{});
-    engine.tracks[0].noteOn(60, 100);  // C4
-    engine.tracks[0].noteOn(64, 90);   // E4
-    engine.tracks[0].noteOn(67, 85);   // G4
+    engine.tracks[0].noteOn(60, 100); // C4
+    engine.tracks[0].noteOn(64, 90); // E4
+    engine.tracks[0].noteOn(67, 85); // G4
 
     // Play for 3 seconds
     const playback_seconds: u64 = 3;

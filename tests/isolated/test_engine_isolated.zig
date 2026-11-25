@@ -36,8 +36,8 @@ pub fn main() !void {
     for (0..num_frames) |i| {
         const t: f32 = @as(f32, @floatFromInt(i)) / sample_rate;
         const sample = @sin(2.0 * std.math.pi * frequency * t) * 0.5;
-        test_samples[i * 2] = sample;       // Left
-        test_samples[i * 2 + 1] = sample;   // Right
+        test_samples[i * 2] = sample; // Left
+        test_samples[i * 2 + 1] = sample; // Right
     }
 
     try engine.tracks[0].loadFromBuffer(test_samples, 2, 48000);
@@ -75,7 +75,7 @@ pub fn main() !void {
 
     std.debug.print("    ✓ Buffer filled with audio\n", .{});
     std.debug.print("    ✓ Peak level: {d:.3}\n", .{peak});
-    std.debug.print("    ✓ Non-zero samples: {d}/{d}\n", .{non_zero_count, output_buffer.len});
+    std.debug.print("    ✓ Non-zero samples: {d}/{d}\n", .{ non_zero_count, output_buffer.len });
 
     // Test 5: Test transport (start/stop)
     std.debug.print("\n[5] Testing transport controls...\n", .{});
@@ -146,7 +146,7 @@ pub fn main() !void {
 
     if (advance_one != 512 or advance_two != 512) {
         std.debug.print("    ✗ FAIL: Position should advance by 512 each time\n", .{});
-        std.debug.print("    First advance: {d}, Second advance: {d}\n", .{advance_one, advance_two});
+        std.debug.print("    First advance: {d}, Second advance: {d}\n", .{ advance_one, advance_two });
         return error.PositionAdvanceError;
     }
 
@@ -235,7 +235,7 @@ pub fn main() !void {
 
     if (peak_full < 0.1 or peak_zero > 0.001) {
         std.debug.print("    ✗ FAIL: Gain controls not working properly\n", .{});
-        std.debug.print("    Full gain peak: {d:.3}, Zero gain peak: {d:.6}\n", .{peak_full, peak_zero});
+        std.debug.print("    Full gain peak: {d:.3}, Zero gain peak: {d:.6}\n", .{ peak_full, peak_zero });
         return error.GainControlError;
     }
 

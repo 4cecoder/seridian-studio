@@ -245,6 +245,27 @@ test "C API - track instrument type survives display names that differ from the 
     try testing.expectEqual(@as(c_int, -1), capi.audio_engine_get_track_instrument_type(engine_ptr, 1));
 }
 
+test "C API - instrument names round-trip: what set accepts is what state reports" {
+    const testing = std.testing;
+    var engine = try newNoneEngine(testing.allocator);
+    defer engine.deinit();
+    const engine_ptr: *anyopaque = @ptrCast(&engine);
+
+    const count = capi.audio_engine_get_instrument_type_count();
+    var type_: c_int = 0;
+    while (type_ < count) : (type_ += 1) {
+        const listed = capi.audio_engine_get_instrument_type_name(type_);
+        try testing.expectEqual(type_, capi.audio_engine_find_instrument_type(listed));
+        try testing.expectEqual(@as(c_int, 0), capi.audio_engine_set_track_instrument(engine_ptr, 2, type_));
+        // The name state reports for the track is the listed name, not the instrument's display name.
+        try testing.expectEqualStrings(std.mem.span(listed), std.mem.span(capi.audio_engine_get_track_instrument_name(engine_ptr, 2)));
+    }
+    try testing.expectEqual(@as(c_int, 19), capi.audio_engine_find_instrument_type("Model Piano"));
+    try testing.expectEqual(@as(c_int, 19), capi.audio_engine_find_instrument_type("modelpiano"));
+    try testing.expectEqual(@as(c_int, -1), capi.audio_engine_find_instrument_type("Nope"));
+    try testing.expectEqual(@as(c_int, -1), capi.audio_engine_find_instrument_type(""));
+}
+
 fn peakOf(buf: []const f32) f32 {
     var peak: f32 = 0.0;
     for (buf) |s| peak = @max(peak, @abs(s));
